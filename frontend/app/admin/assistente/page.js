@@ -8,7 +8,9 @@ import AdminNav from '../../../components/AdminNav';
 const SUGGESTIONS = [
   'Qual o markup ideal para o Cone Trufado se o ingrediente custa R$ 3,20?',
   'Quantos sanduíches preciso vender por dia para cobrir R$ 200 de custo fixo mensal?',
-  'Explique margem de contribuição com um exemplo da nossa loja.',
+  'Compare Cone Trufado e Sanduíche Natural, custos R$ 3,20 e R$ 4,00.',
+  'Qual a previsão de faturamento pro próximo mês?',
+  'Quais pedidos estão pendentes de pagamento?',
 ];
 
 export default function AssistentePage() {
@@ -55,8 +57,10 @@ export default function AssistentePage() {
       <div className="card">
         <div className="product-title">Assistente de matemática financeira</div>
         <div className="subtitle" style={{ marginTop: 4 }}>
-          Tira dúvidas de precificação, margem, ponto de equilíbrio e projeções para a loja. Não confirma
-          pagamentos nem altera dados — isso continua sendo feito nas outras abas.
+          Especializado só em matemática financeira e dados da loja — 100% local, sem API de IA. Tira dúvidas
+          de precificação, margem, markup, ponto de equilíbrio, comparação entre produtos, projeção de
+          faturamento e pedidos (inclusive por nome do aluno). Não confirma pagamentos nem altera dados —
+          isso continua sendo feito nas outras abas.
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, marginTop: 12 }}>
           <input type="checkbox" checked={includeContext} onChange={(e) => setIncludeContext(e.target.checked)} />

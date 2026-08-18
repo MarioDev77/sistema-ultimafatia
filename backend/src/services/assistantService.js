@@ -1,14 +1,21 @@
 // Assistente de matemática financeira do painel admin.
 //
-// Importante: este assistente é 100% LOCAL. Ele não faz nenhuma chamada
-// para uma API externa (nem cobra nada por uso) — ele entende a pergunta
-// com correspondência de padrões (regex/palavras-chave) em português e
-// calcula a resposta usando os próprios dados do projeto: preços reais
-// dos produtos e pedidos/faturamento gravados no banco (backend/src/utils/financeMath.js
-// tem as fórmulas puras). Por não ser um modelo de linguagem geral, ele
-// não "conversa" sobre qualquer assunto — mas cobre precificação, markup,
-// margem, ponto de equilíbrio e consultas de faturamento/pedidos, que é
-// o que o painel precisa.
+// Importante: este assistente é 100% LOCAL e especializado. Ele não faz
+// nenhuma chamada para uma API externa de IA (nem cobra nada por uso) —
+// ele entende a pergunta com correspondência de padrões (regex/palavras-
+// -chave) em português e calcula a resposta usando os próprios dados do
+// projeto: preços reais dos produtos e pedidos/faturamento gravados no
+// banco (backend/src/utils/financeMath.js tem as fórmulas puras). Por
+// não ser um modelo de linguagem geral, ele não "conversa" sobre
+// qualquer assunto — o escopo é deliberadamente restrito a:
+//   - precificação, markup e margem de contribuição
+//   - ponto de equilíbrio
+//   - comparação de rentabilidade entre produtos
+//   - projeção simples (média móvel) de faturamento
+//   - consultas de faturamento e status de pedidos (inclusive por aluno)
+// Qualquer pergunta fora desse escopo cai no fallback, que explica os
+// limites e sugere reformular — o assistente nunca tenta "adivinhar"
+// uma resposta fora de matemática financeira.
 const db = require('../config/db');
 const logger = require('../utils/logger');
 const {
@@ -19,7 +26,20 @@ const {
   markupOnCost,
   priceFromMarkup,
   breakEvenUnits,
+  projectRevenue,
 } = require('../utils/financeMath');
+
+const STATUS_LABELS = {
+  aguardando_pagamento: 'aguardando pagamento',
+  comprovante_enviado: 'comprovante enviado',
+  pagamento_confirmado: 'pagamento confirmado',
+  em_preparacao: 'em preparação',
+  pronto_para_retirada: 'pronto para retirada',
+  entregue: 'entregue',
+  cancelado: 'cancelado',
+  pagamento_expirado: 'pagamento expirado',
+};
+const PENDING_STATUSES = ['aguardando_pagamento', 'comprovante_enviado'];
 
 const MAX_MESSAGES = 20;
 const MAX_MESSAGE_CHARS = 4000;
@@ -101,13 +121,47 @@ async function loadActiveProducts() {
   return products;
 }
 
-function findMentionedProduct(normText, products) {
+// Retorna TODOS os produtos citados no texto (na ordem em que aparecem
+// no cardápio), usado por handleCompareProducts. findMentionedProduct
+// (abaixo) continua existindo para os handlers que só precisam do
+// primeiro produto citado.
+function findMentionedProducts(normText, products) {
+  const found = [];
   for (const p of products) {
     const nameTokens = normalize(p.name).split(/\s+/);
-    if (nameTokens.some((t) => t.length > 3 && normText.includes(t))) return p;
+    if (nameTokens.some((t) => t.length > 3 && normText.includes(t))) found.push(p);
   }
-  if (hasAny(normText, ['cone', 'trufado'])) return products.find((p) => p.slug === 'cone_trufado') || null;
-  if (hasAny(normText, ['sanduiche', 'sanduba', 'natural'])) return products.find((p) => p.slug === 'sanduiche_natural') || null;
+  if (found.length === 0) {
+    if (hasAny(normText, ['cone', 'trufado'])) {
+      const c = products.find((p) => p.slug === 'cone_trufado');
+      if (c) found.push(c);
+    }
+    if (hasAny(normText, ['sanduiche', 'sanduba', 'natural'])) {
+      const s = products.find((p) => p.slug === 'sanduiche_natural');
+      if (s) found.push(s);
+    }
+  }
+  return found;
+}
+
+function findMentionedProduct(normText, products) {
+  return findMentionedProducts(normText, products)[0] || null;
+}
+
+// Extrai um nome de aluno de frases como "pedidos do João Silva" ou
+// "aluno Maria Souza". Retorna null se não encontrar nada plausível.
+function extractNameQuery(rawText) {
+  const patterns = [
+    /pedidos?\s+(?:do|da|de)\s+([a-zà-üA-ZÀ-Ü'\s]{2,40})/i,
+    /alun[oa]\s+([a-zà-üA-ZÀ-Ü'\s]{2,40})/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(rawText);
+    if (m) {
+      const name = m[1].replace(/[?.!,]+$/, '').trim();
+      if (name.length >= 2) return name;
+    }
+  }
   return null;
 }
 
@@ -167,6 +221,52 @@ async function getRevenueForRange(from, to) {
   };
 }
 
+// Faturamento confirmado médio por dia num período histórico já
+// ocorrido — base para a projeção simples de faturamento.
+async function getDailyAverageRevenue(days) {
+  const toISO = (d) => d.toISOString().slice(0, 10);
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - (days - 1));
+  const [rows] = await db.query(
+    `SELECT COALESCE(SUM(total_amount_cents), 0) AS revenue_cents
+     FROM orders WHERE pickup_date BETWEEN ? AND ?
+       AND status IN ('pagamento_confirmado','em_preparacao','pronto_para_retirada','entregue')`,
+    [toISO(from), toISO(to)]
+  );
+  const revenueCents = rows[0].revenue_cents;
+  return {
+    revenueCents,
+    avgDailyCents: Math.round(revenueCents / days),
+    from: toISO(from),
+    to: toISO(to),
+    days,
+  };
+}
+
+function toISODate(value) {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
+async function findOrdersByStudentName(name) {
+  const [rows] = await db.query(
+    `SELECT public_order_number, student_name, class_name, pickup_date, total_amount_cents, status
+     FROM orders WHERE student_name LIKE ? ORDER BY pickup_date DESC, created_at DESC LIMIT 10`,
+    [`%${name}%`]
+  );
+  return rows;
+}
+
+async function findPendingOrders() {
+  const [rows] = await db.query(
+    `SELECT public_order_number, student_name, class_name, pickup_date, total_amount_cents, status
+     FROM orders WHERE status IN (?, ?) ORDER BY pickup_date ASC, created_at ASC LIMIT 15`,
+    PENDING_STATUSES
+  );
+  return rows;
+}
+
 // ---------------------------------------------------------------------
 // Handlers de cada intenção — cada um devolve a string de resposta
 // (ou null se não conseguiu aplicar essa intenção a este texto).
@@ -178,13 +278,17 @@ async function handleGreetingOrHelp(normText, products) {
   }
   const menuLines = products.map((p) => `- ${p.name}: ${formatBRL(p.base_price_cents)}`).join('\n');
   return (
-    `Sou o assistente de matemática financeira da loja — funciono todo localmente, ` +
-    `usando os preços e pedidos já cadastrados no sistema, sem depender de nenhuma API externa.\n\n` +
+    `Sou o assistente de matemática financeira da loja — funciono 100% localmente, ` +
+    `usando os preços e pedidos já cadastrados no sistema, sem depender de nenhuma API externa de IA. ` +
+    `Sou especializado nisso: não converso sobre outros assuntos, só matemática financeira e dados da loja.\n\n` +
     `Posso ajudar com:\n` +
     `- Margem e markup: "custo R$ 3,20 e preço R$ 8,00, qual a margem?"\n` +
     `- Preço sugerido: "quanto cobrar no Cone Trufado com markup de 50% e custo R$ 3,20?"\n` +
     `- Ponto de equilíbrio: "quantos sanduíches para cobrir R$ 200 de custo fixo mensal?"\n` +
+    `- Comparação entre produtos: "compare Cone Trufado e Sanduíche Natural, custos R$ 3,20 e R$ 4,00"\n` +
+    `- Projeção de faturamento: "qual a previsão de faturamento pro próximo mês?"\n` +
     `- Faturamento/pedidos: "quanto faturamos hoje?", "quantos pedidos essa semana?"\n` +
+    `- Pedidos pendentes: "quais pedidos estão pendentes?", "pedidos do João Silva"\n` +
     `- Explicações: "o que é margem de contribuição?"\n\n` +
     `Cardápio atual:\n${menuLines}`
   );
@@ -294,6 +398,163 @@ async function handleMargin(normText, rawText, products) {
   );
 }
 
+async function handleCompareProducts(normText, rawText, products) {
+  if (
+    !hasAny(normText, [
+      'compar',
+      'qual rende mais',
+      'qual lucra mais',
+      'qual da mais lucro',
+      'qual de mais lucro',
+      'qual vale mais a pena',
+      'melhor produto',
+      'qual produto e melhor',
+    ])
+  ) {
+    return null;
+  }
+
+  const mentioned = findMentionedProducts(normText, products);
+  const targets = mentioned.length >= 2 ? mentioned : products;
+  const values = parseMoneyValuesCents(rawText);
+
+  const rows = targets.map((p, i) => {
+    const priceCents = p.base_price_cents;
+    const costCents = values[i] !== undefined ? values[i] : null;
+    if (costCents === null) return { p, priceCents, costCents: null };
+    return {
+      p,
+      priceCents,
+      costCents,
+      marginCents: contributionMargin(priceCents, costCents),
+      margin: marginOnPrice(priceCents, costCents),
+      markup: markupOnCost(priceCents, costCents),
+    };
+  });
+
+  let out = `Comparação entre ${rows.map((r) => `"${r.p.name}"`).join(' e ')}:\n\n`;
+  for (const r of rows) {
+    out += `- ${r.p.name}: preço cadastrado ${formatBRL(r.priceCents)}`;
+    if (r.costCents !== null) {
+      out +=
+        `, custo ${formatBRL(r.costCents)}, margem de contribuição ${formatBRL(r.marginCents)}` +
+        ` (${formatPct(r.margin)} do preço, markup ${r.markup === null ? 'indefinido' : formatPct(r.markup)})`;
+    }
+    out += '\n';
+  }
+
+  if (rows.length >= 2 && rows.every((r) => r.costCents !== null)) {
+    const best = rows.reduce((a, b) => (b.marginCents > a.marginCents ? b : a));
+    out += `\nMaior margem de contribuição por unidade: "${best.p.name}" (${formatBRL(best.marginCents)}).`;
+  } else if (rows.length >= 2) {
+    out += `\nMe diga o custo de cada um, na mesma ordem em que os citou (ex.: "compare Cone Trufado e Sanduíche Natural, custos R$ 3,20 e R$ 4,00"), que eu comparo pela margem de lucro, não só o preço de venda.`;
+  }
+  return out;
+}
+
+async function handleRevenueProjection(normText, rawText) {
+  if (
+    !hasAny(normText, [
+      'projec',
+      'previsa',
+      'estimat',
+      'quanto vamos faturar',
+      'quanto devemos faturar',
+      'quanto vou faturar',
+      'quanto devo faturar',
+    ])
+  ) {
+    return null;
+  }
+
+  const basisDays = 7;
+  const basis = await getDailyAverageRevenue(basisDays);
+
+  let horizonDays = 30;
+  let horizonLabel = 'nos próximos 30 dias';
+  if (hasAny(normText, ['semana'])) {
+    horizonDays = 7;
+    horizonLabel = 'na próxima semana';
+  } else if (hasAny(normText, ['mes', 'mensal'])) {
+    horizonDays = 30;
+    horizonLabel = 'no próximo mês (30 dias)';
+  }
+  const explicitDays = /\b(\d{1,3})\s*dias?\b/i.exec(rawText);
+  if (explicitDays) {
+    horizonDays = parseInt(explicitDays[1], 10);
+    horizonLabel = `nos próximos ${horizonDays} dias`;
+  }
+
+  if (basis.revenueCents === 0) {
+    return (
+      `Não encontrei faturamento confirmado entre ${basis.from} e ${basis.to} (últimos ${basisDays} dias) ` +
+      `para basear uma projeção. Assim que houver pedidos com pagamento confirmado nesse período, eu consigo projetar.`
+    );
+  }
+
+  const projectedCents = projectRevenue(basis.avgDailyCents, horizonDays);
+  return (
+    `Projeção de faturamento ${horizonLabel}, com base na média móvel dos últimos ${basisDays} dias:\n\n` +
+    `Faturamento confirmado de ${basis.from} a ${basis.to}: ${formatBRL(basis.revenueCents)}\n` +
+    `Média diária = ${formatBRL(basis.revenueCents)} ÷ ${basisDays} = ${formatBRL(basis.avgDailyCents)}\n` +
+    `Projeção = média diária × ${horizonDays} dias = ${formatBRL(basis.avgDailyCents)} × ${horizonDays} = ${formatBRL(projectedCents)}\n\n` +
+    `É uma estimativa simples (média móvel, não é IA nem regressão) — assume que o ritmo de vendas se mantém e não considera sazonalidade (feriados, provas, recesso escolar).`
+  );
+}
+
+async function handlePendingOrders(normText, rawText) {
+  const mentionsPending = hasAny(normText, [
+    'pendente',
+    'pendentes',
+    'aguardando pagamento',
+    'em aberto',
+    'nao pago',
+    'nao confirmado',
+    'sem pagamento',
+  ]);
+  const name = extractNameQuery(rawText);
+  if (!mentionsPending && !name) return null;
+
+  if (name) {
+    const rows = await findOrdersByStudentName(name);
+    if (rows.length === 0) {
+      return `Não encontrei pedidos com o nome "${name}" no sistema.`;
+    }
+    const lines = rows
+      .map(
+        (o) =>
+          `- ${o.public_order_number} | ${o.student_name} (${o.class_name}) | retirada ${toISODate(o.pickup_date)} | ` +
+          `${formatBRL(o.total_amount_cents)} | ${STATUS_LABELS[o.status] || o.status}`
+      )
+      .join('\n');
+    const pendingCents = rows
+      .filter((o) => PENDING_STATUSES.includes(o.status))
+      .reduce((sum, o) => sum + o.total_amount_cents, 0);
+    let out = `Pedidos encontrados para "${name}" (mais recentes primeiro):\n\n${lines}`;
+    if (pendingCents > 0) {
+      out += `\n\nTotal ainda não confirmado (aguardando pagamento/comprovante): ${formatBRL(pendingCents)}.`;
+    }
+    return out;
+  }
+
+  const rows = await findPendingOrders();
+  if (rows.length === 0) {
+    return 'Não há pedidos pendentes de pagamento no momento — tudo confirmado ou fora desse status.';
+  }
+  const lines = rows
+    .map(
+      (o) =>
+        `- ${o.public_order_number} | ${o.student_name} (${o.class_name}) | retirada ${toISODate(o.pickup_date)} | ` +
+        `${formatBRL(o.total_amount_cents)} | ${STATUS_LABELS[o.status] || o.status}`
+    )
+    .join('\n');
+  const totalCents = rows.reduce((sum, o) => sum + o.total_amount_cents, 0);
+  return (
+    `Pedidos pendentes de pagamento (${rows.length}${rows.length === 15 ? '+' : ''}):\n\n${lines}\n\n` +
+    `Total pendente: ${formatBRL(totalCents)}.`
+  );
+}
+
 async function handleRevenueQuery(normText, rawText) {
   if (!hasAny(normText, ['fatura', 'venda', 'vendemos', 'pedido'])) return null;
   const period = parsePeriodDates(normText) || (() => {
@@ -342,9 +603,12 @@ async function computeLocalReply(rawText, contextSnapshot) {
   const handlers = [
     () => handleGreetingOrHelp(normText, products),
     () => handleExplainConcept(normText, products),
+    () => handlePendingOrders(normText, rawText),
     () => handleBreakEven(normText, rawText, products),
     () => handleMarkupOrIdealPrice(normText, rawText, products),
     () => handleMargin(normText, rawText, products),
+    () => handleCompareProducts(normText, rawText, products),
+    () => handleRevenueProjection(normText, rawText),
     () => handleRevenueQuery(normText, rawText),
   ];
 
@@ -358,12 +622,16 @@ async function computeLocalReply(rawText, contextSnapshot) {
 
   const menuLines = products.map((p) => `- ${p.name}: ${formatBRL(p.base_price_cents)}`).join('\n');
   return (
-    `Não consegui identificar um cálculo financeiro nessa pergunta. Eu funciono por palavras-chave (não sou um ` +
-    `modelo de linguagem geral), então funciono melhor com pedidos diretos, por exemplo:\n\n` +
+    `Não consegui identificar um cálculo financeiro nessa pergunta. Eu sou especializado só em matemática ` +
+    `financeira e dados da loja (não sou um modelo de linguagem geral e não respondo sobre outros assuntos), ` +
+    `então funciono melhor com pedidos diretos, por exemplo:\n\n` +
     `- "custo R$ 3,20 preço R$ 8,00, qual a margem?"\n` +
     `- "markup de 50% sobre custo de R$ 3,20"\n` +
     `- "quantos cones vender para cobrir R$ 200 de custo fixo?"\n` +
+    `- "compare Cone Trufado e Sanduíche Natural, custos R$ 3,20 e R$ 4,00"\n` +
+    `- "previsão de faturamento pro próximo mês"\n` +
     `- "quanto faturamos hoje?"\n` +
+    `- "quais pedidos estão pendentes?" ou "pedidos do João Silva"\n` +
     `- "o que é ponto de equilíbrio?"\n\n` +
     `Cardápio atual:\n${menuLines}`
   );
