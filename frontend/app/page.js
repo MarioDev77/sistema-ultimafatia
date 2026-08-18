@@ -5,7 +5,18 @@ import { api, formatCents } from '../lib/api';
 
 // Turmas disponíveis — mantenha sincronizada com VALID_CLASS_NAMES no backend
 // (backend/src/utils/validators.js).
-const CLASS_OPTIONS = ['1 Finanças', '2 Finanças', '1 ADM', '2 ADM', '3 ADM'];
+const CLASS_OPTIONS = [
+  '1 Finanças',
+  '2 Finanças',
+  '1 ADM',
+  '2 ADM',
+  '3 ADM',
+  '1A',
+  '1B',
+  '1C',
+  '1D',
+  'Não aluno / Funcionário',
+];
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);

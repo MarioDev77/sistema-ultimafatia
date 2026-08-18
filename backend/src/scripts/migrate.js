@@ -119,18 +119,24 @@ async function step4_addProofReviewStatus() {
   logger.info('[migrate] Status "comprovante_enviado" adicionado (revisão manual do comprovante pelo admin)');
 }
 
-async function main() {
-  try {
-    await step1_fixCharset();
-    await step2_fixMenuText();
-    await step3_fixAvailabilityTable();
-    await step4_addProofReviewStatus();
-    logger.info('[migrate] Migração concluída com sucesso.');
-    process.exit(0);
-  } catch (err) {
-    logger.error('[migrate] Falhou', { error: err.message });
-    process.exit(1);
-  }
+async function runMigration() {
+  await step1_fixCharset();
+  await step2_fixMenuText();
+  await step3_fixAvailabilityTable();
+  await step4_addProofReviewStatus();
+  logger.info('[migrate] Migração concluída com sucesso.');
 }
 
-main();
+// Só executa como processo próprio (`npm run migrate`) — quando importado
+// pelo server.js na subida, quem chama é o server.js, e ele decide o que
+// fazer com o erro (não damos process.exit aqui para não derrubar o server).
+if (require.main === module) {
+  runMigration()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      logger.error('[migrate] Falhou', { error: err.message });
+      process.exit(1);
+    });
+}
+
+module.exports = { runMigration };

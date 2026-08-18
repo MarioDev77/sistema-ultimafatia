@@ -4,7 +4,18 @@ const NAME_REGEX = /^[A-Za-zÀ-ÿ' \-]{2,120}$/;
 
 // Turmas disponíveis — lista fechada (mesma usada no seletor do frontend).
 // Mantenha esta lista sincronizada com CLASS_OPTIONS em frontend/app/page.js.
-const VALID_CLASS_NAMES = new Set(['1 Finanças', '2 Finanças', '1 ADM', '2 ADM', '3 ADM']);
+const VALID_CLASS_NAMES = new Set([
+  '1 Finanças',
+  '2 Finanças',
+  '1 ADM',
+  '2 ADM',
+  '3 ADM',
+  '1A',
+  '1B',
+  '1C',
+  '1D',
+  'Não aluno / Funcionário',
+]);
 
 function isValidName(name) {
   return typeof name === 'string' && NAME_REGEX.test(name.trim());
