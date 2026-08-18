@@ -25,24 +25,60 @@ alunos para confirmar a compra de lanches na loja "Última Fatia". Você
 NÃO tem acesso a nenhum sistema bancário — sua análise é só visual, uma
 pré-triagem para ajudar um humano a decidir mais rápido.
 
+Seja RIGOROSO e cético por padrão. A imagem só conta como comprovante de
+pagamento Pix real se ela mostrar claramente uma tela de aplicativo
+bancário ou instituição de pagamento, com valor, data/hora e (idealmente)
+identificação do destinatário/pagador — no formato típico de comprovante
+de transação Pix. Qualquer imagem que não seja isso — foto de produto,
+print de conversa, papel, documento genérico, tela de outro app, imagem
+sem nenhum dado financeiro visível, ou qualquer coisa que não pareça
+comprovante bancário — deve ser marcada como "parece_comprovante_pagamento":
+false, mesmo que a imagem tenha alguma semelhança superficial. Na dúvida,
+marque como false e explique o motivo em "sinais_de_alerta".
+
+Você vai receber, junto com a imagem: o valor esperado do pedido, o nome
+do aluno que fez o pedido, e o horário em que o QR Code Pix foi gerado
+pelo sistema. Um comprovante só é válido se TODOS os pontos abaixo forem
+verdadeiros:
+1) a imagem é mesmo uma tela de comprovante de pagamento Pix real;
+2) o valor pago bate com o valor esperado do pedido;
+3) o horário/data do pagamento no comprovante é IGUAL OU POSTERIOR ao
+   horário em que o QR Code foi gerado (nunca pode ser antes — um
+   comprovante com data anterior à geração do QR não pode ser deste
+   pedido, ainda que o valor bata);
+4) quando o comprovante mostra nome de pagador/remetente, ele é
+   razoavelmente compatível com o nome do aluno informado (aceite
+   variações razoáveis de nome, já que quem paga pode ser um
+   responsável/familiar — mas sinalize se o nome for claramente
+   diferente e não relacionado).
+
 Responda SOMENTE com um JSON válido, sem texto antes ou depois, nesse
 formato exato:
 {
   "parece_comprovante_pagamento": true ou false,
   "valor_detectado_reais": número (ex: 7.00) ou null se não conseguir ler,
   "valor_bate_com_pedido": true, false, ou null (se não deu pra comparar),
+  "horario_detectado": string curta (ex: "17/08/2026 09:12") ou null,
+  "horario_posterior_ao_qr": true, false, ou null (se não deu pra avaliar),
+  "nome_detectado": string curta ou null,
+  "nome_compativel": true, false, ou null (se não deu pra avaliar),
   "instituicao_detectada": string curta (ex: "Nubank", "Banco do Brasil") ou null,
-  "data_detectada": string curta (ex: "17/08/2026") ou null,
   "sinais_de_alerta": array de strings curtas com qualquer coisa suspeita
     (print editado, valores inconsistentes, imagem não é de um app
-    bancário/Pix, data muito antiga, etc.) — array vazio se nada suspeito,
+    bancário/Pix, horário anterior à geração do QR, nome incompatível,
+    etc.) — array vazio se nada suspeito,
+  "comprovante_valido": true SOMENTE se os 4 pontos acima forem
+    verdadeiros (ou o ponto 4 não avaliável por falta de nome no
+    comprovante) e nenhum sinal de alerta grave; false caso contrário,
   "confianca": "alta", "media" ou "baixa",
   "resumo": string curta (1 frase) explicando sua conclusão para o admin
 }`;
 
-function buildUserText(expectedAmountCents) {
+function buildUserText({ expectedAmountCents, studentName, qrGeneratedAt }) {
   const expectedReais = (expectedAmountCents / 100).toFixed(2);
-  return `Valor esperado deste pedido: R$ ${expectedReais}. Analise a imagem em anexo e responda no formato JSON pedido.`;
+  const qrTime = qrGeneratedAt ? new Date(qrGeneratedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'desconhecido';
+  return `Valor esperado deste pedido: R$ ${expectedReais}. Nome do aluno no pedido: ${studentName || 'não informado'}. ` +
+    `Horário em que o QR Code Pix foi gerado: ${qrTime}. Analise a imagem em anexo e responda no formato JSON pedido.`;
 }
 
 function parseDataUrl(dataUrl) {
@@ -51,7 +87,7 @@ function parseDataUrl(dataUrl) {
   return { mediaType: match[1], base64Data: match[2] };
 }
 
-async function analyzeProofImage(proofImageDataUrl, expectedAmountCents) {
+async function analyzeProofImage(proofImageDataUrl, { expectedAmountCents, studentName, qrGeneratedAt }) {
   if (!env.assistant.apiKey) {
     throw new ProofAnalysisError('Assistente não configurado. Defina ANTHROPIC_API_KEY no backend.', 503);
   }
@@ -79,7 +115,7 @@ async function analyzeProofImage(proofImageDataUrl, expectedAmountCents) {
             role: 'user',
             content: [
               { type: 'image', source: { type: 'base64', media_type: parsed.mediaType, data: parsed.base64Data } },
-              { type: 'text', text: buildUserText(expectedAmountCents) },
+              { type: 'text', text: buildUserText({ expectedAmountCents, studentName, qrGeneratedAt }) },
             ],
           },
         ],
@@ -111,9 +147,13 @@ async function analyzeProofImage(proofImageDataUrl, expectedAmountCents) {
       parece_comprovante_pagamento: null,
       valor_detectado_reais: null,
       valor_bate_com_pedido: null,
+      horario_detectado: null,
+      horario_posterior_ao_qr: null,
+      nome_detectado: null,
+      nome_compativel: null,
       instituicao_detectada: null,
-      data_detectada: null,
       sinais_de_alerta: [],
+      comprovante_valido: false,
       confianca: 'baixa',
       resumo: 'Não foi possível interpretar a análise automaticamente. Confira a imagem manualmente.',
     };

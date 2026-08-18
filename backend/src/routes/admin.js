@@ -8,6 +8,11 @@ const { setAvailability, setOrdersOpen, getMenuForDate } = require('../services/
 const { askAssistant, AssistantError } = require('../services/assistantService');
 const { analyzeProofImage, ProofAnalysisError } = require('../services/proofAnalysisService');
 const { assistantLimiter } = require('../middleware/rateLimit');
+const { uploadProofSingle } = require('../middleware/upload');
+const { savePaymentProof } = require('../services/orderService');
+const { buildWeeklyReport } = require('../services/reportService');
+const { buildWeeklyExcel } = require('../services/excelReportService');
+const { buildWeeklyPdf } = require('../services/pdfReportService');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -122,7 +127,7 @@ router.post(
       return res.status(400).json({ error: 'ID inválido.' });
     }
     const [rows] = await db.query(
-      'SELECT proof_type, proof_image FROM payments WHERE order_id = ?',
+      'SELECT proof_type, proof_image, created_at AS qr_generated_at FROM payments WHERE order_id = ?',
       [orderId]
     );
     const payment = rows[0];
@@ -132,11 +137,15 @@ router.post(
       });
     }
 
-    const [orderRows] = await db.query('SELECT total_amount_cents FROM orders WHERE id = ?', [orderId]);
+    const [orderRows] = await db.query('SELECT total_amount_cents, student_name FROM orders WHERE id = ?', [orderId]);
     if (orderRows.length === 0) return res.status(404).json({ error: 'Pedido não encontrado.' });
 
     try {
-      const analysis = await analyzeProofImage(payment.proof_image, orderRows[0].total_amount_cents);
+      const analysis = await analyzeProofImage(payment.proof_image, {
+        expectedAmountCents: orderRows[0].total_amount_cents,
+        studentName: orderRows[0].student_name,
+        qrGeneratedAt: payment.qr_generated_at,
+      });
       res.json({ analysis });
     } catch (err) {
       if (err instanceof ProofAnalysisError) {
@@ -144,6 +153,76 @@ router.post(
       }
       throw err;
     }
+  })
+);
+
+// Admin tira/anexa a foto do comprovante do cliente (ex.: aluno mostra o
+// print no balcão) e ela fica salva na aba "Comprovantes". Reaproveita a
+// mesma tabela `payments` já usada antes pelo cliente — não cria tabela
+// nova. O pedido vai para "comprovante_enviado", aguardando confirmação
+// manual (Pedidos/Financeiro), igual já acontecia antes.
+router.post(
+  '/orders/:id/payment-proof/capture',
+  uploadProofSingle,
+  asyncHandler(async (req, res) => {
+    const orderId = Number(req.params.id);
+    if (!isPositiveInt(orderId, Number.MAX_SAFE_INTEGER)) {
+      return res.status(400).json({ error: 'ID inválido.' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Envie a foto do comprovante.' });
+    }
+
+    const [orderRows] = await db.query('SELECT id FROM orders WHERE id = ?', [orderId]);
+    if (orderRows.length === 0) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    await savePaymentProof(orderId, { type: 'upload', image: dataUrl });
+
+    await db.query('INSERT INTO security_logs (admin_id, action, details, ip_address) VALUES (?, ?, ?, ?)', [
+      req.admin.id,
+      'payment_proof_capture',
+      `Comprovante fotografado pelo admin para o pedido ${orderId}`,
+      req.ip,
+    ]);
+
+    logger.info('Comprovante capturado pelo admin', { orderId });
+    res.json({ message: 'Comprovante salvo.' });
+  })
+);
+
+// Galeria de comprovantes (aba "Comprovantes" do painel) — lista os
+// pedidos com foto de comprovante anexada, mais recentes primeiro.
+router.get(
+  '/payment-proofs',
+  asyncHandler(async (req, res) => {
+    const from = isValidDateString(req.query.from) ? req.query.from : null;
+    const to = isValidDateString(req.query.to) ? req.query.to : null;
+
+    const conditions = ["p.proof_type = 'upload'"];
+    const params = [];
+    if (from) {
+      conditions.push('o.pickup_date >= ?');
+      params.push(from);
+    }
+    if (to) {
+      conditions.push('o.pickup_date <= ?');
+      params.push(to);
+    }
+
+    const [rows] = await db.query(
+      `SELECT o.id AS order_id, o.public_order_number, o.student_name, o.class_name,
+              o.pickup_date, o.status AS order_status, o.total_amount_cents,
+              p.status AS payment_status, p.proof_submitted_at, p.created_at AS pix_generated_at
+       FROM payments p
+       JOIN orders o ON o.id = p.order_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY p.proof_submitted_at DESC
+       LIMIT 200`,
+      params
+    );
+
+    res.json(rows);
   })
 );
 
@@ -395,6 +474,40 @@ router.patch(
     }
     await db.query('UPDATE product_options SET active = ? WHERE id = ?', [active ? 1 : 0, optionId]);
     res.json({ message: 'Opção atualizada.' });
+  })
+);
+
+// ---------- Relatório financeiro semanal (balancete com IA) ----------
+router.get(
+  '/reports/weekly',
+  asyncHandler(async (req, res) => {
+    const dateStr = isValidDateString(req.query.date) ? req.query.date : undefined;
+    const report = await buildWeeklyReport(dateStr);
+    res.json(report);
+  })
+);
+
+router.get(
+  '/reports/weekly/excel',
+  asyncHandler(async (req, res) => {
+    const dateStr = isValidDateString(req.query.date) ? req.query.date : undefined;
+    const report = await buildWeeklyReport(dateStr);
+    const buffer = await buildWeeklyExcel(report);
+    res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.set('Content-Disposition', `attachment; filename="ultima-fatia-semana-${report.to}.xlsx"`);
+    res.send(buffer);
+  })
+);
+
+router.get(
+  '/reports/weekly/pdf',
+  asyncHandler(async (req, res) => {
+    const dateStr = isValidDateString(req.query.date) ? req.query.date : undefined;
+    const report = await buildWeeklyReport(dateStr);
+    const buffer = await buildWeeklyPdf(report);
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Disposition', `attachment; filename="ultima-fatia-semana-${report.to}.pdf"`);
+    res.send(buffer);
   })
 );
 

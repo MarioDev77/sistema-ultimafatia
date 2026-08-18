@@ -177,15 +177,22 @@ function ProofAnalysisCell({ state, onAnalyze }) {
   }
 
   const r = state.result;
-  const okColor = r.valor_bate_com_pedido === true ? 'var(--green-ok)' : r.valor_bate_com_pedido === false ? 'var(--red-danger)' : 'var(--brown-mid)';
+  const veredito =
+    r.comprovante_valido === true ? '✓ Comprovante válido' : r.comprovante_valido === false ? '✗ Comprovante inválido' : 'Não avaliado';
+  const veredictColor = r.comprovante_valido === true ? 'var(--green-ok)' : r.comprovante_valido === false ? 'var(--red-danger)' : 'var(--brown-mid)';
 
   return (
-    <div style={{ fontSize: 12, marginTop: 4, maxWidth: 220 }}>
-      <div style={{ color: okColor, fontWeight: 700 }}>
+    <div style={{ fontSize: 12, marginTop: 4, maxWidth: 240 }}>
+      <div style={{ color: veredictColor, fontWeight: 700 }}>{veredito}</div>
+      <div>
         {r.valor_detectado_reais != null ? `R$ ${Number(r.valor_detectado_reais).toFixed(2)}` : 'Valor não identificado'}
-        {r.valor_bate_com_pedido === true && ' ✓ bate com o pedido'}
-        {r.valor_bate_com_pedido === false && ' ✗ NÃO bate com o pedido'}
+        {r.valor_bate_com_pedido === true && ' ✓ valor bate'}
+        {r.valor_bate_com_pedido === false && ' ✗ valor não bate'}
       </div>
+      {r.horario_posterior_ao_qr === false && (
+        <div style={{ color: 'var(--red-danger)' }}>⚠ horário do comprovante é anterior à geração do Pix</div>
+      )}
+      {r.nome_compativel === false && <div style={{ color: 'var(--red-danger)' }}>⚠ nome no comprovante não bate com o aluno</div>}
       {r.sinais_de_alerta && r.sinais_de_alerta.length > 0 && (
         <div style={{ color: 'var(--red-danger)' }}>⚠ {r.sinais_de_alerta.join('; ')}</div>
       )}

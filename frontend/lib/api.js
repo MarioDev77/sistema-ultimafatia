@@ -32,16 +32,6 @@ export const api = {
   createOrder: (payload) => request('/api/orders', { method: 'POST', body: JSON.stringify(payload) }),
   getOrder: (token) => request(`/api/orders/${encodeURIComponent(token)}`),
   notifyPayment: (token) => request(`/api/orders/${encodeURIComponent(token)}/notify-payment`, { method: 'POST' }),
-  sendPaymentProofFile: (token, file) => {
-    const formData = new FormData();
-    formData.append('comprovante', file);
-    return request(`/api/orders/${encodeURIComponent(token)}/payment-proof`, { method: 'POST', body: formData });
-  },
-  sendPaymentProofLink: (token, url) =>
-    request(`/api/orders/${encodeURIComponent(token)}/payment-proof`, {
-      method: 'POST',
-      body: JSON.stringify({ proof_url: url }),
-    }),
 
   adminLogin: (username, password) =>
     request('/api/admin/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
@@ -66,6 +56,19 @@ export const api = {
     ),
   adminPaymentProofImageUrl: (orderId) => `${API_URL}/api/admin/orders/${orderId}/payment-proof/image`,
   adminAnalyzeProof: (orderId) => request(`/api/admin/orders/${orderId}/payment-proof/analyze`, { method: 'POST' }),
+  adminCapturePaymentProof: (orderId, file) => {
+    const formData = new FormData();
+    formData.append('comprovante', file);
+    return request(`/api/admin/orders/${orderId}/payment-proof/capture`, { method: 'POST', body: formData });
+  },
+  adminPaymentProofs: (from, to) =>
+    request(
+      `/api/admin/payment-proofs?${from ? `from=${encodeURIComponent(from)}&` : ''}${to ? `to=${encodeURIComponent(to)}` : ''}`
+    ),
+
+  adminWeeklyReport: (date) => request(`/api/admin/reports/weekly?${date ? `date=${encodeURIComponent(date)}` : ''}`),
+  adminWeeklyReportExcelUrl: (date) => `${API_URL}/api/admin/reports/weekly/excel${date ? `?date=${encodeURIComponent(date)}` : ''}`,
+  adminWeeklyReportPdfUrl: (date) => `${API_URL}/api/admin/reports/weekly/pdf${date ? `?date=${encodeURIComponent(date)}` : ''}`,
 
   adminAssistantChat: (messages, includeTodayContext) =>
     request('/api/admin/assistant/chat', {

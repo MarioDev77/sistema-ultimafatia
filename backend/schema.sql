@@ -184,12 +184,13 @@ CREATE TABLE security_logs (
 -- ============================================================
 INSERT INTO products (slug, name, description, base_price_cents, requires_option, option_group, active)
 VALUES
-('sanduiche_natural', 'Sanduíche Natural', 'Feito com ingredientes frescos, leve, saboroso e perfeito para o dia a dia.', 700, 1, 'ervilha', 1),
+('sanduiche_natural', 'Sanduíche Natural', 'Feito com ingredientes frescos, leve, saboroso e perfeito para o dia a dia.', 700, 0, NULL, 1),
 ('cone_trufado', 'Cone Trufado', 'Casquinha crocante com recheio trufado e diversos sabores irresistíveis.', 800, 1, 'sabor_cone', 1);
 
+-- O sanduíche natural não tem mais opção de "com/sem ervilha" (não mudava
+-- preço nem produção). As linhas abaixo não existem mais para o produto 1;
+-- veja migrate.js (step5) para instalações que já tinham essas opções.
 INSERT INTO product_options (product_id, option_value, label, sort_order) VALUES
-(1, 'com_ervilha', 'Com ervilha', 1),
-(1, 'sem_ervilha', 'Sem ervilha', 2),
 (2, 'maracuja', 'Maracujá', 1),
 (2, 'ninho', 'Ninho', 2),
 (2, 'brigadeiro', 'Brigadeiro', 3),

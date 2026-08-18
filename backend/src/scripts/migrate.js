@@ -119,11 +119,33 @@ async function step4_addProofReviewStatus() {
   logger.info('[migrate] Status "comprovante_enviado" adicionado (revisão manual do comprovante pelo admin)');
 }
 
+async function step5_removeErvilhaOption() {
+  // O sanduíche natural tinha opção "com ervilha" / "sem ervilha" que não
+  // mudava preço nem produção — só confundia o aluno no pedido. A partir
+  // de agora o sanduíche não exige mais escolha de opção: o aluno só
+  // seleciona o produto. As opções antigas ficam desativadas (não
+  // deletadas, para não quebrar o histórico de pedidos já feitos com
+  // elas em order_items).
+  const [result] = await db.query(
+    `UPDATE products SET requires_option = 0, option_group = NULL WHERE slug = 'sanduiche_natural'`
+  );
+  if (result.affectedRows > 0) {
+    logger.info('[migrate] Sanduíche natural não exige mais opção (ervilha removida)');
+  }
+  await db.query(
+    `UPDATE product_options po
+     JOIN products pr ON pr.id = po.product_id
+     SET po.active = 0
+     WHERE pr.slug = 'sanduiche_natural' AND po.option_value IN ('com_ervilha', 'sem_ervilha')`
+  );
+}
+
 async function runMigration() {
   await step1_fixCharset();
   await step2_fixMenuText();
   await step3_fixAvailabilityTable();
   await step4_addProofReviewStatus();
+  await step5_removeErvilhaOption();
   logger.info('[migrate] Migração concluída com sucesso.');
 }
 

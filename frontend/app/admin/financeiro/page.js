@@ -34,6 +34,9 @@ export default function FinanceiroPage() {
   const [onlyWithProof, setOnlyWithProof] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [report, setReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
   const router = useRouter();
 
   function load() {
@@ -51,9 +54,70 @@ export default function FinanceiroPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to, onlyWithProof]);
 
+  function loadWeeklyReport() {
+    setReportLoading(true);
+    setReportError('');
+    api
+      .adminWeeklyReport(to)
+      .then(setReport)
+      .catch((err) => setReportError(err.message))
+      .finally(() => setReportLoading(false));
+  }
+
   return (
     <div className="admin-container">
       <AdminNav />
+
+      <div className="card">
+        <div className="product-title" style={{ marginBottom: 4 }}>
+          Relatório semanal (balancete)
+        </div>
+        <div className="subtitle" style={{ marginBottom: 12 }}>
+          Gera o balancete dos últimos 7 dias até a data "Até" selecionada abaixo, com resumo escrito por IA
+          a partir dos números reais da loja.
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn-primary" style={{ width: 'auto', padding: '10px 16px' }} onClick={loadWeeklyReport} disabled={reportLoading}>
+            {reportLoading ? 'Gerando...' : 'Gerar relatório da semana'}
+          </button>
+          <a className="btn-secondary" style={{ width: 'auto', padding: '10px 16px', textDecoration: 'none', textAlign: 'center' }} href={api.adminWeeklyReportExcelUrl(to)}>
+            Baixar planilha (Excel)
+          </a>
+          <a className="btn-secondary" style={{ width: 'auto', padding: '10px 16px', textDecoration: 'none', textAlign: 'center' }} href={api.adminWeeklyReportPdfUrl(to)}>
+            Baixar PDF
+          </a>
+        </div>
+
+        {reportError && <div className="error-text">{reportError}</div>}
+
+        {report && (
+          <div style={{ marginTop: 14 }}>
+            <div className="subtitle" style={{ marginBottom: 6 }}>
+              Período: {report.from} a {report.to}
+            </div>
+            <div className="summary-row">
+              <span>Faturamento confirmado</span>
+              <span>{formatCents(report.revenueCents)}</span>
+            </div>
+            <div className="summary-row">
+              <span>Pendente de pagamento</span>
+              <span>{formatCents(report.pendingCents)}</span>
+            </div>
+            <div className="summary-row">
+              <span>Cancelados</span>
+              <span>{report.cancelledCount}</span>
+            </div>
+            {report.narrative ? (
+              <div style={{ marginTop: 10, whiteSpace: 'pre-wrap', fontSize: 13.5, lineHeight: 1.5 }}>{report.narrative}</div>
+            ) : (
+              <div className="subtitle" style={{ marginTop: 10 }}>
+                Resumo em texto indisponível (assistente de IA não configurado no servidor). Os números acima e nos
+                downloads continuam completos.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="card">
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>

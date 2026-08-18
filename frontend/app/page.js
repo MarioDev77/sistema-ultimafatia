@@ -42,12 +42,6 @@ export default function Home() {
   const [order, setOrder] = useState(null);
   const [apiError, setApiError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [proofMode, setProofMode] = useState('upload'); // 'upload' | 'link'
-  const [proofFile, setProofFile] = useState(null);
-  const [proofUrl, setProofUrl] = useState('');
-  const [proofError, setProofError] = useState('');
-  const [sendingProof, setSendingProof] = useState(false);
-  const [proofSent, setProofSent] = useState(false);
 
   useEffect(() => {
     setLoadingMenu(true);
@@ -140,42 +134,6 @@ export default function Home() {
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // clipboard pode falhar em contexto não seguro; ignora silenciosamente
-    }
-  }
-
-  async function handleSendProof() {
-    if (!order) return;
-    setProofError('');
-
-    if (proofMode === 'upload') {
-      if (!proofFile) {
-        setProofError('Selecione a foto ou print do comprovante.');
-        return;
-      }
-      setSendingProof(true);
-      try {
-        await api.sendPaymentProofFile(order.access_token, proofFile);
-        setProofSent(true);
-      } catch (err) {
-        setProofError(err.message);
-      } finally {
-        setSendingProof(false);
-      }
-    } else {
-      const trimmed = proofUrl.trim();
-      if (!trimmed) {
-        setProofError('Cole o link do comprovante.');
-        return;
-      }
-      setSendingProof(true);
-      try {
-        await api.sendPaymentProofLink(order.access_token, trimmed);
-        setProofSent(true);
-      } catch (err) {
-        setProofError(err.message);
-      } finally {
-        setSendingProof(false);
-      }
     }
   }
 
@@ -415,68 +373,14 @@ export default function Home() {
             </button>
           </div>
 
-          <div className="card">
-            {proofSent ? (
-              <div style={{ textAlign: 'center' }}>
-                <div className="product-title">Comprovante recebido! ✅</div>
-                <div className="subtitle" style={{ marginTop: 6 }}>
-                  Vamos conferir seu comprovante e confirmar o pagamento em breve. Acompanhe o status
-                  do pedido pelo link abaixo.
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="product-title" style={{ marginBottom: 4 }}>
-                  Envie o comprovante do pagamento
-                </div>
-                <div className="subtitle" style={{ marginBottom: 12 }}>
-                  Depois de pagar o Pix acima, envie o comprovante aqui — foto/print da tela do banco
-                  ou o link do comprovante. Um responsável vai conferir e confirmar seu pagamento.
-                </div>
-
-                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                  <button
-                    type="button"
-                    className={proofMode === 'upload' ? 'btn-primary' : 'btn-secondary'}
-                    style={{ flex: 1 }}
-                    onClick={() => setProofMode('upload')}
-                  >
-                    Enviar foto
-                  </button>
-                  <button
-                    type="button"
-                    className={proofMode === 'link' ? 'btn-primary' : 'btn-secondary'}
-                    style={{ flex: 1 }}
-                    onClick={() => setProofMode('link')}
-                  >
-                    Colar link
-                  </button>
-                </div>
-
-                {proofMode === 'upload' ? (
-                  <PhotoProofPicker file={proofFile} onFileSelected={setProofFile} />
-                ) : (
-                  <input
-                    className="input"
-                    type="url"
-                    placeholder="https://..."
-                    value={proofUrl}
-                    onChange={(e) => setProofUrl(e.target.value)}
-                  />
-                )}
-
-                {proofError && <div className="error-text">{proofError}</div>}
-
-                <button
-                  className="btn-primary"
-                  style={{ marginTop: 10 }}
-                  disabled={sendingProof}
-                  onClick={handleSendProof}
-                >
-                  {sendingProof ? 'Enviando...' : 'Enviar comprovante'}
-                </button>
-              </>
-            )}
+          <div className="card" style={{ textAlign: 'center' }}>
+            <div className="product-title" style={{ marginBottom: 4 }}>
+              Pague pelo QR Code ou copia e cola acima
+            </div>
+            <div className="subtitle">
+              Assim que o pagamento cair, um responsável confirma seu pedido. Acompanhe o status pelo
+              link abaixo — não é necessário enviar comprovante por aqui.
+            </div>
           </div>
 
           <div className="card">
@@ -493,59 +397,3 @@ export default function Home() {
   );
 }
 
-// Dá duas formas claras de escolher o comprovante no celular: tirar uma
-// foto na hora (abre a câmera direto) ou escolher da galeria/arquivos
-// (ex.: um print que o aluno já tinha salvo). Antes só existia um único
-// input com capture="environment", que em vários celulares tira a opção
-// de escolher da galeria — obrigando a tirar foto na hora mesmo quando
-// o comprovante já estava salvo como print.
-function PhotoProofPicker({ file, onFileSelected }) {
-  const [previewUrl, setPreviewUrl] = useState(null);
-
-  useEffect(() => {
-    if (!file) {
-      setPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <label className="btn-secondary" style={{ flex: 1, textAlign: 'center', display: 'block' }}>
-          📷 Tirar foto agora
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: 'none' }}
-            onChange={(e) => onFileSelected(e.target.files?.[0] || null)}
-          />
-        </label>
-        <label className="btn-secondary" style={{ flex: 1, textAlign: 'center', display: 'block' }}>
-          🖼️ Escolher da galeria
-          <input
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={(e) => onFileSelected(e.target.files?.[0] || null)}
-          />
-        </label>
-      </div>
-
-      {file && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--cream-light)', borderRadius: 12, padding: 8 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={previewUrl} alt="Prévia do comprovante" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
-          <div style={{ fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
-          <button type="button" onClick={() => onFileSelected(null)} style={{ background: 'none', border: 'none', color: 'var(--red-danger)', fontWeight: 700, cursor: 'pointer' }}>
-            remover
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
