@@ -104,6 +104,7 @@ CREATE TABLE orders (
   total_amount_cents INT UNSIGNED NOT NULL,                  -- calculado no backend
   status ENUM(
     'aguardando_pagamento',
+    'comprovante_enviado',
     'pagamento_confirmado',
     'em_preparacao',
     'pronto_para_retirada',

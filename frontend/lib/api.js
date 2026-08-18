@@ -65,6 +65,7 @@ export const api = {
       `/api/admin/payments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${onlyWithProof ? '&only_with_proof=true' : ''}`
     ),
   adminPaymentProofImageUrl: (orderId) => `${API_URL}/api/admin/orders/${orderId}/payment-proof/image`,
+  adminAnalyzeProof: (orderId) => request(`/api/admin/orders/${orderId}/payment-proof/analyze`, { method: 'POST' }),
 
   adminAssistantChat: (messages, includeTodayContext) =>
     request('/api/admin/assistant/chat', {

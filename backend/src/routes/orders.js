@@ -158,7 +158,7 @@ router.post(
     }
 
     logger.info('Comprovante de pagamento recebido', { orderNumber: token.slice(0, 8) });
-    res.json({ message: 'Comprovante recebido! Seu pagamento foi confirmado.' });
+    res.json({ message: 'Comprovante recebido! Vamos conferir e confirmar seu pagamento em breve.' });
   })
 );
 

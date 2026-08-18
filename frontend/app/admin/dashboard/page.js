@@ -15,6 +15,7 @@ const CONE_FLAVOR_LABELS = {
 
 const STATUS_LABELS = {
   aguardando_pagamento: 'Aguardando pagamento',
+  comprovante_enviado: 'Comprovante enviado — conferir',
   pagamento_confirmado: 'Pagamento confirmado',
   em_preparacao: 'Em preparação',
   pronto_para_retirada: 'Pronto para retirada',

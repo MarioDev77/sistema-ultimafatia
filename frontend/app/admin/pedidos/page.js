@@ -13,6 +13,7 @@ function todayISO() {
 
 const STATUS_OPTIONS = [
   'aguardando_pagamento',
+  'comprovante_enviado',
   'pagamento_confirmado',
   'em_preparacao',
   'pronto_para_retirada',
@@ -23,6 +24,7 @@ const STATUS_OPTIONS = [
 
 const STATUS_LABELS = {
   aguardando_pagamento: 'Aguardando pagamento',
+  comprovante_enviado: 'Comprovante enviado — conferir',
   pagamento_confirmado: 'Pagamento confirmado',
   em_preparacao: 'Em preparação',
   pronto_para_retirada: 'Pronto para retirada',
@@ -35,6 +37,7 @@ export default function OrdersPage() {
   const [date, setDate] = useState(todayISO());
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState('');
+  const [analyses, setAnalyses] = useState({}); // { [orderId]: { loading, result, error } }
   const router = useRouter();
 
   function load() {
@@ -58,6 +61,16 @@ export default function OrdersPage() {
       load();
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function analyzeProof(id) {
+    setAnalyses((prev) => ({ ...prev, [id]: { loading: true } }));
+    try {
+      const { analysis } = await api.adminAnalyzeProof(id);
+      setAnalyses((prev) => ({ ...prev, [id]: { loading: false, result: analysis } }));
+    } catch (err) {
+      setAnalyses((prev) => ({ ...prev, [id]: { loading: false, error: err.message } }));
     }
   }
 
@@ -94,13 +107,18 @@ export default function OrdersPage() {
                 <td>{o.payment_status || '—'}</td>
                 <td>
                   {o.proof_type ? (
-                    <a
-                      href={`${API_URL}/api/admin/orders/${o.id}/payment-proof/image`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Ver
-                    </a>
+                    <>
+                      <a
+                        href={`${API_URL}/api/admin/orders/${o.id}/payment-proof/image`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Ver
+                      </a>
+                      {o.proof_type === 'upload' && (
+                        <ProofAnalysisCell orderId={o.id} state={analyses[o.id]} onAnalyze={() => analyzeProof(o.id)} />
+                      )}
+                    </>
                   ) : (
                     '—'
                   )}
@@ -129,6 +147,49 @@ export default function OrdersPage() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// Mostra o botão "Analisar (IA)" e, depois de clicado, um resumo curto
+// da pré-análise (não é confirmação bancária — ver aviso no backend).
+function ProofAnalysisCell({ state, onAnalyze }) {
+  if (!state) {
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={onAnalyze}
+          style={{ background: 'none', border: 'none', color: 'var(--orange)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', padding: '2px 0' }}
+        >
+          Analisar (IA)
+        </button>
+      </div>
+    );
+  }
+
+  if (state.loading) {
+    return <div className="subtitle" style={{ fontSize: 12 }}>Analisando…</div>;
+  }
+
+  if (state.error) {
+    return <div className="error-text" style={{ fontSize: 12 }}>{state.error}</div>;
+  }
+
+  const r = state.result;
+  const okColor = r.valor_bate_com_pedido === true ? 'var(--green-ok)' : r.valor_bate_com_pedido === false ? 'var(--red-danger)' : 'var(--brown-mid)';
+
+  return (
+    <div style={{ fontSize: 12, marginTop: 4, maxWidth: 220 }}>
+      <div style={{ color: okColor, fontWeight: 700 }}>
+        {r.valor_detectado_reais != null ? `R$ ${Number(r.valor_detectado_reais).toFixed(2)}` : 'Valor não identificado'}
+        {r.valor_bate_com_pedido === true && ' ✓ bate com o pedido'}
+        {r.valor_bate_com_pedido === false && ' ✗ NÃO bate com o pedido'}
+      </div>
+      {r.sinais_de_alerta && r.sinais_de_alerta.length > 0 && (
+        <div style={{ color: 'var(--red-danger)' }}>⚠ {r.sinais_de_alerta.join('; ')}</div>
+      )}
+      <div className="subtitle" style={{ fontSize: 11.5 }}>{r.resumo} (confiança: {r.confianca})</div>
     </div>
   );
 }

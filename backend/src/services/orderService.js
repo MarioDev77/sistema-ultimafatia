@@ -66,8 +66,13 @@ async function savePayment(orderId, { pixPayload, amountCents, expiresAt }) {
   );
 }
 
-// Salva o comprovante enviado pelo cliente (upload de imagem ou link) e
-// confirma o pagamento automaticamente — sem checagem manual do admin.
+// Salva o comprovante enviado pelo cliente (upload de imagem ou link).
+// IMPORTANTE: isso NÃO confirma o pagamento sozinho — só registra que o
+// comprovante chegou e move o pedido para "comprovante_enviado", esperando
+// um admin conferir a imagem/link e confirmar manualmente (tela Pedidos ou
+// Financeiro). Antes, qualquer foto enviada confirmava a venda na hora,
+// o que permitia enviar uma imagem qualquer (sem relação com o pagamento)
+// e liberar o pedido de graça.
 async function savePaymentProof(orderId, { type, image, url }) {
   const conn = await db.getConnection();
   try {
@@ -75,14 +80,13 @@ async function savePaymentProof(orderId, { type, image, url }) {
 
     await conn.query(
       `UPDATE payments
-       SET proof_type = ?, proof_image = ?, proof_url = ?, proof_submitted_at = NOW(),
-           status = 'confirmado', confirmed_at = NOW()
+       SET proof_type = ?, proof_image = ?, proof_url = ?, proof_submitted_at = NOW()
        WHERE order_id = ?`,
       [type, image || null, url || null, orderId]
     );
 
     await conn.query(
-      `UPDATE orders SET status = 'pagamento_confirmado' WHERE id = ? AND status = 'aguardando_pagamento'`,
+      `UPDATE orders SET status = 'comprovante_enviado' WHERE id = ? AND status = 'aguardando_pagamento'`,
       [orderId]
     );
 

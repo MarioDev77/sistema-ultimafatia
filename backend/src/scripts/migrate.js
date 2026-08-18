@@ -102,11 +102,29 @@ async function step3_fixAvailabilityTable() {
   }
 }
 
+async function step4_addProofReviewStatus() {
+  // Idempotente: MODIFY COLUMN pode ser rodado de novo sem problema.
+  await db.query(`
+    ALTER TABLE orders MODIFY COLUMN status ENUM(
+      'aguardando_pagamento',
+      'comprovante_enviado',
+      'pagamento_confirmado',
+      'em_preparacao',
+      'pronto_para_retirada',
+      'entregue',
+      'cancelado',
+      'pagamento_expirado'
+    ) NOT NULL DEFAULT 'aguardando_pagamento'
+  `);
+  logger.info('[migrate] Status "comprovante_enviado" adicionado (revisão manual do comprovante pelo admin)');
+}
+
 async function main() {
   try {
     await step1_fixCharset();
     await step2_fixMenuText();
     await step3_fixAvailabilityTable();
+    await step4_addProofReviewStatus();
     logger.info('[migrate] Migração concluída com sucesso.');
     process.exit(0);
   } catch (err) {

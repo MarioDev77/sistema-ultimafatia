@@ -5,6 +5,7 @@ import { api, formatCents } from '../../../lib/api';
 
 const STATUS_LABELS = {
   aguardando_pagamento: { text: 'Aguardando pagamento', className: 'badge-waiting' },
+  comprovante_enviado: { text: 'Comprovante em análise', className: 'badge-preparing' },
   pagamento_confirmado: { text: 'Pagamento confirmado', className: 'badge-paid' },
   em_preparacao: { text: 'Em preparação', className: 'badge-preparing' },
   pronto_para_retirada: { text: 'Pronto para retirada', className: 'badge-ready' },

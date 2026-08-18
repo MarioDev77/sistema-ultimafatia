@@ -6,6 +6,7 @@ const { adminApiLimiter } = require('../middleware/rateLimit');
 const { isValidDateString, isPositiveInt } = require('../utils/validators');
 const { setAvailability, setOrdersOpen, getMenuForDate } = require('../services/availabilityService');
 const { askAssistant, AssistantError } = require('../services/assistantService');
+const { analyzeProofImage, ProofAnalysisError } = require('../services/proofAnalysisService');
 const { assistantLimiter } = require('../middleware/rateLimit');
 const logger = require('../utils/logger');
 
@@ -15,6 +16,7 @@ router.use(requireAdmin, adminApiLimiter);
 
 const VALID_STATUSES = [
   'aguardando_pagamento',
+  'comprovante_enviado',
   'pagamento_confirmado',
   'em_preparacao',
   'pronto_para_retirada',
@@ -106,6 +108,42 @@ router.get(
     const [, mimeType, base64Data] = match;
     res.set('Content-Type', mimeType);
     res.send(Buffer.from(base64Data, 'base64'));
+  })
+);
+
+// Pré-análise do comprovante com IA (apoio à decisão do admin — não
+// confirma nada sozinha; ver aviso no topo de proofAnalysisService.js).
+router.post(
+  '/orders/:id/payment-proof/analyze',
+  assistantLimiter,
+  asyncHandler(async (req, res) => {
+    const orderId = Number(req.params.id);
+    if (!isPositiveInt(orderId, Number.MAX_SAFE_INTEGER)) {
+      return res.status(400).json({ error: 'ID inválido.' });
+    }
+    const [rows] = await db.query(
+      'SELECT proof_type, proof_image FROM payments WHERE order_id = ?',
+      [orderId]
+    );
+    const payment = rows[0];
+    if (!payment || payment.proof_type !== 'upload') {
+      return res.status(400).json({
+        error: 'Análise automática só está disponível para comprovantes enviados como foto/imagem (não para links colados).',
+      });
+    }
+
+    const [orderRows] = await db.query('SELECT total_amount_cents FROM orders WHERE id = ?', [orderId]);
+    if (orderRows.length === 0) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    try {
+      const analysis = await analyzeProofImage(payment.proof_image, orderRows[0].total_amount_cents);
+      res.json({ analysis });
+    } catch (err) {
+      if (err instanceof ProofAnalysisError) {
+        return res.status(err.status).json({ error: err.message });
+      }
+      throw err;
+    }
   })
 );
 

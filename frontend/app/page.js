@@ -409,7 +409,8 @@ export default function Home() {
               <div style={{ textAlign: 'center' }}>
                 <div className="product-title">Comprovante recebido! ✅</div>
                 <div className="subtitle" style={{ marginTop: 6 }}>
-                  Seu pagamento já foi confirmado. Acompanhe o status do pedido pelo link abaixo.
+                  Vamos conferir seu comprovante e confirmar o pagamento em breve. Acompanhe o status
+                  do pedido pelo link abaixo.
                 </div>
               </div>
             ) : (
@@ -419,8 +420,7 @@ export default function Home() {
                 </div>
                 <div className="subtitle" style={{ marginBottom: 12 }}>
                   Depois de pagar o Pix acima, envie o comprovante aqui — foto/print da tela do banco
-                  ou o link do comprovante. Assim que enviar, seu pagamento já é confirmado
-                  automaticamente e o pedido segue para o preparo.
+                  ou o link do comprovante. Um responsável vai conferir e confirmar seu pagamento.
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -443,13 +443,7 @@ export default function Home() {
                 </div>
 
                 {proofMode === 'upload' ? (
-                  <input
-                    className="input"
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={(e) => setProofFile(e.target.files?.[0] || null)}
-                  />
+                  <PhotoProofPicker file={proofFile} onFileSelected={setProofFile} />
                 ) : (
                   <input
                     className="input"
@@ -483,6 +477,63 @@ export default function Home() {
             </div>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// Dá duas formas claras de escolher o comprovante no celular: tirar uma
+// foto na hora (abre a câmera direto) ou escolher da galeria/arquivos
+// (ex.: um print que o aluno já tinha salvo). Antes só existia um único
+// input com capture="environment", que em vários celulares tira a opção
+// de escolher da galeria — obrigando a tirar foto na hora mesmo quando
+// o comprovante já estava salvo como print.
+function PhotoProofPicker({ file, onFileSelected }) {
+  const [previewUrl, setPreviewUrl] = useState(null);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <label className="btn-secondary" style={{ flex: 1, textAlign: 'center', display: 'block' }}>
+          📷 Tirar foto agora
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={(e) => onFileSelected(e.target.files?.[0] || null)}
+          />
+        </label>
+        <label className="btn-secondary" style={{ flex: 1, textAlign: 'center', display: 'block' }}>
+          🖼️ Escolher da galeria
+          <input
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(e) => onFileSelected(e.target.files?.[0] || null)}
+          />
+        </label>
+      </div>
+
+      {file && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--cream-light)', borderRadius: 12, padding: 8 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={previewUrl} alt="Prévia do comprovante" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
+          <div style={{ fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
+          <button type="button" onClick={() => onFileSelected(null)} style={{ background: 'none', border: 'none', color: 'var(--red-danger)', fontWeight: 700, cursor: 'pointer' }}>
+            remover
+          </button>
+        </div>
       )}
     </div>
   );
