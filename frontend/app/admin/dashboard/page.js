@@ -5,6 +5,14 @@ import { useRouter } from 'next/navigation';
 import { api, formatCents } from '../../../lib/api';
 import AdminNav from '../../../components/AdminNav';
 
+const CONE_FLAVOR_LABELS = {
+  maracuja: 'Maracujá',
+  ninho: 'Ninho',
+  brigadeiro: 'Brigadeiro',
+  brigadeiro_morango: 'Brigadeiro com morango',
+  brigadeiro_prestigio: 'Brigadeiro e Prestígio',
+};
+
 const STATUS_LABELS = {
   aguardando_pagamento: 'Aguardando pagamento',
   pagamento_confirmado: 'Pagamento confirmado',
@@ -96,9 +104,9 @@ export default function DashboardPage() {
             <div className="product-title">Produção — Cones</div>
             <table>
               <tbody>
-                {['maracuja', 'ninho', 'brigadeiro', 'brigadeiro_morango', 'brigadeiro_prestigio'].map((flavor) => (
+                {Object.keys(CONE_FLAVOR_LABELS).map((flavor) => (
                   <tr key={flavor}>
-                    <td>{flavor.replace(/_/g, ' ')}</td>
+                    <td>{CONE_FLAVOR_LABELS[flavor]}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }}>
                       {cones.find((c) => c.option_value === flavor)?.total_qty || 0}
                     </td>

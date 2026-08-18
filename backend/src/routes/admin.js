@@ -5,6 +5,8 @@ const { requireAdmin } = require('../middleware/auth');
 const { adminApiLimiter } = require('../middleware/rateLimit');
 const { isValidDateString, isPositiveInt } = require('../utils/validators');
 const { setAvailability, setOrdersOpen, getMenuForDate } = require('../services/availabilityService');
+const { askAssistant, AssistantError } = require('../services/assistantService');
+const { assistantLimiter } = require('../middleware/rateLimit');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -156,6 +158,87 @@ router.patch(
     ]);
 
     res.json({ message: 'Status atualizado.' });
+  })
+);
+
+// ---------- Financeiro (comprovantes de pagamento) ----------
+// Lista os pagamentos de um período com o que é preciso para a aba
+// Financeiro: valor, status, se tem comprovante e de que tipo. A
+// imagem em si continua servida só pela rota já existente
+// /orders/:id/payment-proof/image (não trafega base64 nesta lista).
+router.get(
+  '/payments',
+  asyncHandler(async (req, res) => {
+    const from = isValidDateString(req.query.from) ? req.query.from : new Date().toISOString().slice(0, 10);
+    const to = isValidDateString(req.query.to) ? req.query.to : from;
+    const onlyWithProof = req.query.only_with_proof === 'true';
+
+    const conditions = ['o.pickup_date BETWEEN ? AND ?'];
+    const params = [from, to];
+    if (onlyWithProof) {
+      conditions.push('p.proof_type IS NOT NULL');
+    }
+
+    const [rows] = await db.query(
+      `SELECT o.id AS order_id, o.public_order_number, o.student_name, o.class_name,
+              o.pickup_date, o.status AS order_status, o.total_amount_cents,
+              p.status AS payment_status, p.proof_type, p.proof_submitted_at, p.confirmed_at
+       FROM orders o
+       LEFT JOIN payments p ON p.order_id = o.id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY o.created_at DESC`,
+      params
+    );
+
+    const [totalsRows] = await db.query(
+      `SELECT COALESCE(SUM(o.total_amount_cents), 0) AS confirmed_cents, COUNT(*) AS confirmed_count
+       FROM orders o
+       WHERE o.pickup_date BETWEEN ? AND ?
+         AND o.status IN ('pagamento_confirmado','em_preparacao','pronto_para_retirada','entregue')`,
+      [from, to]
+    );
+
+    res.json({
+      from,
+      to,
+      payments: rows,
+      confirmed_revenue_cents: totalsRows[0].confirmed_cents,
+      confirmed_count: totalsRows[0].confirmed_count,
+    });
+  })
+);
+
+// ---------- Assistente de matemática financeira ----------
+router.post(
+  '/assistant/chat',
+  assistantLimiter,
+  asyncHandler(async (req, res) => {
+    const { messages, include_today_context } = req.body || {};
+
+    let contextSnapshot = null;
+    if (include_today_context) {
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const [revenueRows] = await db.query(
+        `SELECT COALESCE(SUM(total_amount_cents), 0) AS revenue_cents, COUNT(*) AS confirmed_orders
+         FROM orders WHERE pickup_date = ? AND status IN ('pagamento_confirmado','em_preparacao','pronto_para_retirada','entregue')`,
+        [dateStr]
+      );
+      const [pendingRows] = await db.query(
+        `SELECT COUNT(*) AS pending_orders FROM orders WHERE pickup_date = ? AND status = 'aguardando_pagamento'`,
+        [dateStr]
+      );
+      contextSnapshot = `Data: ${dateStr}. Faturamento confirmado: R$ ${(revenueRows[0].revenue_cents / 100).toFixed(2)} (${revenueRows[0].confirmed_orders} pedidos). Pedidos aguardando pagamento: ${pendingRows[0].pending_orders}.`;
+    }
+
+    try {
+      const reply = await askAssistant(messages, contextSnapshot);
+      res.json({ reply });
+    } catch (err) {
+      if (err instanceof AssistantError) {
+        return res.status(err.status).json({ error: err.message });
+      }
+      throw err;
+    }
   })
 );
 

@@ -59,6 +59,18 @@ export const api = {
   adminProducts: () => request('/api/admin/products'),
   adminUpdateProduct: (id, payload) =>
     request(`/api/admin/products/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+
+  adminPayments: (from, to, onlyWithProof) =>
+    request(
+      `/api/admin/payments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${onlyWithProof ? '&only_with_proof=true' : ''}`
+    ),
+  adminPaymentProofImageUrl: (orderId) => `${API_URL}/api/admin/orders/${orderId}/payment-proof/image`,
+
+  adminAssistantChat: (messages, includeTodayContext) =>
+    request('/api/admin/assistant/chat', {
+      method: 'POST',
+      body: JSON.stringify({ messages, include_today_context: includeTodayContext }),
+    }),
 };
 
 export function formatCents(cents) {

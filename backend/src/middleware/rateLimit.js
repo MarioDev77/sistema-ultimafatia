@@ -39,10 +39,22 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Mais restritivo que o adminApiLimiter: cada chamada custa dinheiro (API
+// da Anthropic), então limitamos à parte para evitar uma conta alta em
+// caso de uso excessivo (acidental ou não) de uma sessão admin.
+const assistantLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 25,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Muitas mensagens para o assistente em pouco tempo. Aguarde alguns minutos.' },
+});
+
 module.exports = {
   loginLimiter,
   orderCreationLimiter,
   orderLookupLimiter,
   adminApiLimiter,
   generalLimiter,
+  assistantLimiter,
 };

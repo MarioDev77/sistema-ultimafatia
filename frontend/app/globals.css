@@ -303,3 +303,48 @@ th { color: var(--brown-mid); font-size: 12.5px; text-transform: uppercase; }
   color: var(--brown-dark);
 }
 .nav-tab.active { background: var(--brown-dark); color: white; border-color: var(--brown-dark); }
+
+.chat-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding: 4px 2px;
+  margin-bottom: 12px;
+}
+
+.chat-bubble {
+  max-width: 80%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.chat-bubble.user {
+  align-self: flex-end;
+  background: var(--orange);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-bubble.assistant {
+  align-self: flex-start;
+  background: var(--cream-light);
+  color: var(--brown-dark);
+  border: 1px solid var(--cream);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.chat-input-row textarea {
+  flex: 1;
+  resize: none;
+}

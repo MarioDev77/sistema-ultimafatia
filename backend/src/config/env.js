@@ -33,4 +33,13 @@ module.exports = {
     merchantName: (process.env.PIX_MERCHANT_NAME || 'ULTIMA FATIA').slice(0, 25),
     merchantCity: (process.env.PIX_MERCHANT_CITY || 'SAO PAULO').slice(0, 15),
   },
+
+  // Assistente de matemática financeira do painel admin. Opcional: se a
+  // chave não estiver configurada, a rota do assistente responde 503 em
+  // vez de derrubar o servidor inteiro (diferente de PIX_KEY/JWT_SECRET,
+  // essa feature não é essencial para o funcionamento da loja).
+  assistant: {
+    apiKey: process.env.ANTHROPIC_API_KEY || null,
+    model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5',
+  },
 };

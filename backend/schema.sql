@@ -18,7 +18,7 @@ CREATE TABLE admin_users (
   locked_until DATETIME NULL,
   last_login_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- 2. Produtos (Sanduíche Natural / Cone Trufado)
@@ -36,7 +36,7 @@ CREATE TABLE products (
   max_qty_per_order SMALLINT UNSIGNED NULL, -- limite opcional
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- 3. Opções de produto (com/sem ervilha, sabores de cone)
@@ -52,7 +52,7 @@ CREATE TABLE product_options (
   sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
   CONSTRAINT fk_option_product FOREIGN KEY (product_id) REFERENCES products(id),
   UNIQUE KEY uq_product_option (product_id, option_value)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- 4. Disponibilidade diária (o admin marca o que está
@@ -63,11 +63,20 @@ CREATE TABLE daily_availability (
   availability_date DATE NOT NULL,
   product_id INT UNSIGNED NOT NULL,
   option_id INT UNSIGNED NULL,             -- NULL = refere-se ao produto inteiro
+  -- Coluna gerada só para a UNIQUE KEY: o MySQL trata cada NULL como um
+  -- valor distinto em índices UNIQUE, então "option_id IS NULL" nunca
+  -- colidia consigo mesmo — cada toggle do produto inteiro (option_id
+  -- NULL) criava uma LINHA NOVA em vez de atualizar a existente. Isso é
+  -- o que fazia produtos marcados como indisponíveis nunca conseguirem
+  -- voltar a ficar disponíveis (a linha antiga com available=0 continuava
+  -- lá). Usando COALESCE(option_id, 0) na chave, o conflito é detectado
+  -- corretamente e o ON DUPLICATE KEY UPDATE atualiza a linha certa.
+  option_id_key INT UNSIGNED GENERATED ALWAYS AS (COALESCE(option_id, 0)) STORED,
   available TINYINT(1) NOT NULL DEFAULT 1,
   CONSTRAINT fk_avail_product FOREIGN KEY (product_id) REFERENCES products(id),
   CONSTRAINT fk_avail_option FOREIGN KEY (option_id) REFERENCES product_options(id),
-  UNIQUE KEY uq_avail (availability_date, product_id, option_id)
-) ENGINE=InnoDB;
+  UNIQUE KEY uq_avail (availability_date, product_id, option_id_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- 5. Dias de funcionamento / fechamento de pedidos
@@ -77,7 +86,7 @@ CREATE TABLE store_calendar (
   calendar_date DATE NOT NULL UNIQUE,
   orders_open TINYINT(1) NOT NULL DEFAULT 1, -- false = fechado para pedidos nesse dia
   note VARCHAR(255) NULL
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- 6. Pedidos
@@ -106,7 +115,7 @@ CREATE TABLE orders (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_pickup_date (pickup_date),
   INDEX idx_status (status)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- 7. Itens do pedido
@@ -122,7 +131,7 @@ CREATE TABLE order_items (
   CONSTRAINT fk_item_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
   CONSTRAINT fk_item_product FOREIGN KEY (product_id) REFERENCES products(id),
   CONSTRAINT fk_item_option FOREIGN KEY (option_id) REFERENCES product_options(id)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- 8. Pagamentos (payload Pix gerado, sem armazenar a chave)
@@ -144,7 +153,7 @@ CREATE TABLE payments (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_payment_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
   CONSTRAINT fk_payment_admin FOREIGN KEY (confirmed_by_admin_id) REFERENCES admin_users(id)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- 9. Configurações gerais (NÃO inclui a chave Pix — isso fica
@@ -154,7 +163,7 @@ CREATE TABLE settings (
   setting_key VARCHAR(50) PRIMARY KEY,
   setting_value VARCHAR(255) NOT NULL,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- 10. Logs de segurança / auditoria
@@ -167,7 +176,7 @@ CREATE TABLE security_logs (
   ip_address VARCHAR(45) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_log_admin FOREIGN KEY (admin_id) REFERENCES admin_users(id)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
 -- SEED inicial de produtos e opções

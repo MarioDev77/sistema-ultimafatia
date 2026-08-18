@@ -12,6 +12,10 @@ const pool = mysql.createPool({
   queueLimit: 0,
   timezone: '-03:00',
   decimalNumbers: true,
+  // Sem isso, o driver pode negociar um charset sem suporte completo a
+  // acentos/emoji dependendo do servidor MySQL, causando perda silenciosa
+  // de caracteres como "á", "í", "ã" (ex.: "Maracujá" virando "Maracuj").
+  charset: 'utf8mb4',
 });
 
 module.exports = pool;
