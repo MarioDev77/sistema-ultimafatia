@@ -69,4 +69,3 @@ ultima-fatia/
 - Rodar um pentest / revisão de segurança real antes de publicar (o sistema
   segue boas práticas, mas isso não substitui testes de segurança reais).
 - Ajustar `PIX_MERCHANT_CITY` para a cidade real da escola.
-# sistema-ultimafatia
