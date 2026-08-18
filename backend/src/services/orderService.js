@@ -66,12 +66,41 @@ async function savePayment(orderId, { pixPayload, amountCents, expiresAt }) {
   );
 }
 
+// Salva o comprovante enviado pelo cliente (upload de imagem ou link) e
+// confirma o pagamento automaticamente — sem checagem manual do admin.
+async function savePaymentProof(orderId, { type, image, url }) {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    await conn.query(
+      `UPDATE payments
+       SET proof_type = ?, proof_image = ?, proof_url = ?, proof_submitted_at = NOW(),
+           status = 'confirmado', confirmed_at = NOW()
+       WHERE order_id = ?`,
+      [type, image || null, url || null, orderId]
+    );
+
+    await conn.query(
+      `UPDATE orders SET status = 'pagamento_confirmado' WHERE id = ? AND status = 'aguardando_pagamento'`,
+      [orderId]
+    );
+
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 // Consulta segura: SÓ retorna o pedido se o token bater. Nunca por ID sequencial.
 async function getOrderByToken(token) {
   const [rows] = await db.query(
     `SELECT o.public_order_number, o.student_name, o.class_name, o.pickup_date,
             o.pickup_window_start, o.pickup_window_end, o.total_amount_cents, o.status, o.created_at,
-            p.pix_payload, p.status AS payment_status
+            p.pix_payload, p.status AS payment_status, p.proof_type, p.proof_submitted_at
      FROM orders o
      LEFT JOIN payments p ON p.order_id = o.id
      WHERE o.access_token = ?`,
@@ -98,4 +127,4 @@ async function getOrderIdByToken(token) {
   return rows[0] || null;
 }
 
-module.exports = { createOrder, savePayment, getOrderByToken, getOrderIdByToken };
+module.exports = { createOrder, savePayment, savePaymentProof, getOrderByToken, getOrderIdByToken };

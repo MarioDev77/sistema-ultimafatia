@@ -136,6 +136,11 @@ CREATE TABLE payments (
   confirmed_by_admin_id INT UNSIGNED NULL,
   confirmed_at DATETIME NULL,
   expires_at DATETIME NOT NULL,
+  -- Comprovante enviado pelo cliente (upload de imagem OU link colado).
+  proof_type ENUM('upload','link') NULL,
+  proof_image LONGTEXT NULL,                -- imagem em base64 (data URL), quando proof_type='upload'
+  proof_url VARCHAR(500) NULL,              -- link colado, quando proof_type='link'
+  proof_submitted_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_payment_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
   CONSTRAINT fk_payment_admin FOREIGN KEY (confirmed_by_admin_id) REFERENCES admin_users(id)

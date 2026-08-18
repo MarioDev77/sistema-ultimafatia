@@ -2,11 +2,24 @@ const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
 const { isValidName, isValidClassName, isValidDateString, isValidItemsArray } = require('../utils/validators');
 const { calculateOrderTotal, PriceError } = require('../services/priceService');
-const { createOrder, savePayment, getOrderByToken } = require('../services/orderService');
+const { createOrder, savePayment, savePaymentProof, getOrderByToken, getOrderIdByToken } = require('../services/orderService');
 const { buildPixPayload, buildPixQrCodeDataUrl } = require('../services/pixService');
 const { getMenuForDate } = require('../services/availabilityService');
 const { orderCreationLimiter, orderLookupLimiter } = require('../middleware/rateLimit');
+const { uploadProofSingle } = require('../middleware/upload');
 const logger = require('../utils/logger');
+
+const MAX_PROOF_URL_LENGTH = 500;
+
+function isValidHttpUrl(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_PROOF_URL_LENGTH) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 const router = express.Router();
 
@@ -109,6 +122,43 @@ router.post(
     }
     logger.info('Aluno sinalizou pagamento realizado', { orderNumber: order.public_order_number });
     res.json({ message: 'Obrigado! Vamos conferir seu pagamento em instantes.' });
+  })
+);
+
+// POST /api/orders/:token/payment-proof — cliente envia comprovante
+// (upload de imagem OU link) e o pagamento é confirmado automaticamente.
+router.post(
+  '/:token/payment-proof',
+  orderLookupLimiter,
+  uploadProofSingle, // no-op (não seta req.file) se a requisição não for multipart/form-data
+  asyncHandler(async (req, res) => {
+    const { token } = req.params;
+    if (typeof token !== 'string' || token.length < 20 || token.length > 60) {
+      return res.status(400).json({ error: 'Token inválido.' });
+    }
+
+    const order = await getOrderIdByToken(token);
+    if (!order) {
+      return res.status(404).json({ error: 'Pedido não encontrado.' });
+    }
+
+    const file = req.file; // presente quando o envio foi upload de arquivo
+    const proofUrl = req.body && typeof req.body.proof_url === 'string' ? req.body.proof_url.trim() : '';
+
+    if (file) {
+      const dataUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+      await savePaymentProof(order.id, { type: 'upload', image: dataUrl });
+    } else if (proofUrl) {
+      if (!isValidHttpUrl(proofUrl)) {
+        return res.status(400).json({ error: 'Link do comprovante inválido.' });
+      }
+      await savePaymentProof(order.id, { type: 'link', url: proofUrl });
+    } else {
+      return res.status(400).json({ error: 'Envie uma imagem do comprovante ou cole o link.' });
+    }
+
+    logger.info('Comprovante de pagamento recebido', { orderNumber: token.slice(0, 8) });
+    res.json({ message: 'Comprovante recebido! Seu pagamento foi confirmado.' });
   })
 );
 

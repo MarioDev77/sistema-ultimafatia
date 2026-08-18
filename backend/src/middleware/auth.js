@@ -8,14 +8,22 @@ function issueSessionCookie(res, payload) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     secure: env.nodeEnv === 'production',
-    sameSite: 'strict',
+    // 'none' é necessário porque o frontend (Vercel) e o backend (Railway)
+    // estão em domínios diferentes. Requer secure:true (HTTPS), o que já
+    // é o caso em produção. Em dev (http://localhost) cai para 'lax'.
+    sameSite: env.nodeEnv === 'production' ? 'none' : 'lax',
     maxAge: 8 * 60 * 60 * 1000, // 8h
     path: '/',
   });
 }
 
 function clearSessionCookie(res) {
-  res.clearCookie(COOKIE_NAME, { httpOnly: true, secure: env.nodeEnv === 'production', sameSite: 'strict', path: '/' });
+  res.clearCookie(COOKIE_NAME, {
+    httpOnly: true,
+    secure: env.nodeEnv === 'production',
+    sameSite: env.nodeEnv === 'production' ? 'none' : 'lax',
+    path: '/',
+  });
 }
 
 // Exige admin autenticado. Nunca confia em header customizado nem em ID na URL.

@@ -19,7 +19,9 @@ const helmetOptions = helmet({
       frameAncestors: ["'none'"],
     },
   },
-  crossOriginResourcePolicy: { policy: 'same-site' },
+  // 'cross-origin' porque o frontend (Vercel) e o backend (Railway) ficam
+  // em domínios diferentes; 'same-site' bloquearia as respostas da API.
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 });
 
 module.exports = { cors: cors(corsOptions), helmet: helmetOptions };

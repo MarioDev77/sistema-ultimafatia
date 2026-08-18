@@ -65,7 +65,7 @@ router.get(
     const dateStr = isValidDateString(req.query.date) ? req.query.date : new Date().toISOString().slice(0, 10);
     const [orders] = await db.query(
       `SELECT o.id, o.public_order_number, o.student_name, o.class_name, o.pickup_date, o.status,
-              o.total_amount_cents, o.created_at, p.status AS payment_status
+              o.total_amount_cents, o.created_at, p.status AS payment_status, p.proof_type
        FROM orders o
        LEFT JOIN payments p ON p.order_id = o.id
        WHERE o.pickup_date = ?
@@ -73,6 +73,37 @@ router.get(
       [dateStr]
     );
     res.json(orders);
+  })
+);
+
+// Exibe o comprovante enviado pelo cliente: imagem (upload) ou redireciona
+// para o link (quando o cliente colou uma URL em vez de enviar arquivo).
+router.get(
+  '/orders/:id/payment-proof/image',
+  asyncHandler(async (req, res) => {
+    const orderId = Number(req.params.id);
+    if (!isPositiveInt(orderId, Number.MAX_SAFE_INTEGER)) {
+      return res.status(400).json({ error: 'ID inválido.' });
+    }
+    const [rows] = await db.query(
+      'SELECT proof_type, proof_image, proof_url FROM payments WHERE order_id = ?',
+      [orderId]
+    );
+    const payment = rows[0];
+    if (!payment || !payment.proof_type) {
+      return res.status(404).json({ error: 'Nenhum comprovante enviado para este pedido.' });
+    }
+    if (payment.proof_type === 'link') {
+      return res.redirect(payment.proof_url);
+    }
+    // proof_image é uma data URL: "data:image/png;base64,AAAA..."
+    const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(payment.proof_image || '');
+    if (!match) {
+      return res.status(500).json({ error: 'Comprovante corrompido.' });
+    }
+    const [, mimeType, base64Data] = match;
+    res.set('Content-Type', mimeType);
+    res.send(Buffer.from(base64Data, 'base64'));
   })
 );
 
