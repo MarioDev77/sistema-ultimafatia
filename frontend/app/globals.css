@@ -348,3 +348,74 @@ th { color: var(--brown-mid); font-size: 12.5px; text-transform: uppercase; }
   flex: 1;
   resize: none;
 }
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll table { min-width: 480px; }
+
+/* ---------------------------------------------------------------
+   Responsivo — painel admin em celular (ex.: tirar foto de
+   comprovante no balcão). Abaixo de 720px reduzimos respiros,
+   deixamos a navegação rolável na horizontal em vez de quebrar
+   linha, empilhamos linhas de formulário e ativamos scroll nas
+   tabelas em vez de espremer colunas.
+------------------------------------------------------------------ */
+@media (max-width: 720px) {
+  .admin-container {
+    padding: 12px 12px 32px;
+  }
+
+  .card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .product-title {
+    font-size: 16px;
+  }
+
+  .nav-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    margin-bottom: 16px;
+    padding-bottom: 4px;
+  }
+
+  .nav-tab {
+    flex: 0 0 auto;
+    padding: 9px 13px;
+    font-size: 13px;
+  }
+
+  table { font-size: 13px; }
+  th, td { padding: 8px 6px; }
+
+  .chat-input-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chat-input-row button {
+    width: 100%;
+  }
+
+  .chat-box {
+    max-height: 45vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-container {
+    padding: 10px 10px 28px;
+  }
+
+  .header {
+    flex-wrap: wrap;
+  }
+}

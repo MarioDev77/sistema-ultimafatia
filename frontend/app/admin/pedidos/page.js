@@ -85,6 +85,7 @@ export default function OrdersPage() {
       {error && <div className="error-text">{error}</div>}
 
       <div className="card">
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -146,6 +147,7 @@ export default function OrdersPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

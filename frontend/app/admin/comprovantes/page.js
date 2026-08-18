@@ -90,10 +90,10 @@ export default function ComprovantesPage() {
         <div className="subtitle" style={{ marginBottom: 12 }}>
           Digite o número do pedido (ex: UF-284193) e tire a foto do comprovante mostrado pelo aluno no balcão.
         </div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
           <input
             className="input"
-            style={{ marginBottom: 0 }}
+            style={{ marginBottom: 0, flex: '1 1 160px' }}
             placeholder="Número do pedido"
             value={orderNumberInput}
             onChange={(e) => setOrderNumberInput(e.target.value)}

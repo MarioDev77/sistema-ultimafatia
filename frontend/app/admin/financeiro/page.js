@@ -147,6 +147,7 @@ export default function FinanceiroPage() {
           </div>
 
           <div className="card">
+            <div className="table-scroll">
             <table>
               <thead>
                 <tr>
@@ -188,6 +189,7 @@ export default function FinanceiroPage() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}
