@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react';
 import { api, formatCents } from '../lib/api';
 
+// Turmas disponíveis — mantenha sincronizada com VALID_CLASS_NAMES no backend
+// (backend/src/utils/validators.js).
+const CLASS_OPTIONS = ['1 Finanças', '2 Finanças', '1 ADM', '2 ADM', '3 ADM'];
+
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -21,12 +25,18 @@ export default function Home() {
   const [loadingMenu, setLoadingMenu] = useState(true);
   const [cart, setCart] = useState({}); // key: `${productId}:${optionId}` -> {product, option, qty}
   const [studentName, setStudentName] = useState('');
-  const [className, setClassName] = useState('');
+  const [className, setClassName] = useState(CLASS_OPTIONS[0]);
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [order, setOrder] = useState(null);
   const [apiError, setApiError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [proofMode, setProofMode] = useState('upload'); // 'upload' | 'link'
+  const [proofFile, setProofFile] = useState(null);
+  const [proofUrl, setProofUrl] = useState('');
+  const [proofError, setProofError] = useState('');
+  const [sendingProof, setSendingProof] = useState(false);
+  const [proofSent, setProofSent] = useState(false);
 
   useEffect(() => {
     setLoadingMenu(true);
@@ -83,7 +93,7 @@ export default function Home() {
 
   function validateStep2() {
     if (studentName.trim().length < 2) return 'Digite seu nome completo.';
-    if (className.trim().length < 1) return 'Digite sua turma.';
+    if (!CLASS_OPTIONS.includes(className)) return 'Selecione sua turma.';
     return '';
   }
 
@@ -122,13 +132,39 @@ export default function Home() {
     }
   }
 
-  async function handleNotifyPayment() {
+  async function handleSendProof() {
     if (!order) return;
-    try {
-      await api.notifyPayment(order.access_token);
-      alert('Obrigado! Assim que confirmarmos, seu pedido entra em preparação.');
-    } catch (err) {
-      setApiError(err.message);
+    setProofError('');
+
+    if (proofMode === 'upload') {
+      if (!proofFile) {
+        setProofError('Selecione a foto ou print do comprovante.');
+        return;
+      }
+      setSendingProof(true);
+      try {
+        await api.sendPaymentProofFile(order.access_token, proofFile);
+        setProofSent(true);
+      } catch (err) {
+        setProofError(err.message);
+      } finally {
+        setSendingProof(false);
+      }
+    } else {
+      const trimmed = proofUrl.trim();
+      if (!trimmed) {
+        setProofError('Cole o link do comprovante.');
+        return;
+      }
+      setSendingProof(true);
+      try {
+        await api.sendPaymentProofLink(order.access_token, trimmed);
+        setProofSent(true);
+      } catch (err) {
+        setProofError(err.message);
+      } finally {
+        setSendingProof(false);
+      }
     }
   }
 
@@ -260,14 +296,18 @@ export default function Home() {
               maxLength={120}
             />
             <label className="label">Turma</label>
-            <input
+            <select
               className="input"
               value={className}
               onChange={(e) => setClassName(e.target.value)}
-              placeholder="Ex: 9º A"
-              maxLength={20}
               style={{ marginBottom: 0 }}
-            />
+            >
+              {CLASS_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
           </div>
           {formError && <div className="error-text">{formError}</div>}
           <button
@@ -362,10 +402,76 @@ export default function Home() {
             <button className="btn-primary" onClick={handleCopyPix}>
               {copied ? 'Copiado!' : 'COPIAR PIX'}
             </button>
-            <div style={{ height: 10 }} />
-            <button className="btn-secondary" onClick={handleNotifyPayment}>
-              JÁ REALIZEI O PAGAMENTO
-            </button>
+          </div>
+
+          <div className="card">
+            {proofSent ? (
+              <div style={{ textAlign: 'center' }}>
+                <div className="product-title">Comprovante recebido! ✅</div>
+                <div className="subtitle" style={{ marginTop: 6 }}>
+                  Seu pagamento já foi confirmado. Acompanhe o status do pedido pelo link abaixo.
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="product-title" style={{ marginBottom: 4 }}>
+                  Envie o comprovante do pagamento
+                </div>
+                <div className="subtitle" style={{ marginBottom: 12 }}>
+                  Depois de pagar o Pix acima, envie o comprovante aqui — foto/print da tela do banco
+                  ou o link do comprovante. Assim que enviar, seu pagamento já é confirmado
+                  automaticamente e o pedido segue para o preparo.
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                  <button
+                    type="button"
+                    className={proofMode === 'upload' ? 'btn-primary' : 'btn-secondary'}
+                    style={{ flex: 1 }}
+                    onClick={() => setProofMode('upload')}
+                  >
+                    Enviar foto
+                  </button>
+                  <button
+                    type="button"
+                    className={proofMode === 'link' ? 'btn-primary' : 'btn-secondary'}
+                    style={{ flex: 1 }}
+                    onClick={() => setProofMode('link')}
+                  >
+                    Colar link
+                  </button>
+                </div>
+
+                {proofMode === 'upload' ? (
+                  <input
+                    className="input"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                  />
+                ) : (
+                  <input
+                    className="input"
+                    type="url"
+                    placeholder="https://..."
+                    value={proofUrl}
+                    onChange={(e) => setProofUrl(e.target.value)}
+                  />
+                )}
+
+                {proofError && <div className="error-text">{proofError}</div>}
+
+                <button
+                  className="btn-primary"
+                  style={{ marginTop: 10 }}
+                  disabled={sendingProof}
+                  onClick={handleSendProof}
+                >
+                  {sendingProof ? 'Enviando...' : 'Enviar comprovante'}
+                </button>
+              </>
+            )}
           </div>
 
           <div className="card">

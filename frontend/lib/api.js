@@ -1,11 +1,14 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 async function request(path, options = {}) {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     credentials: 'include', // envia cookie httpOnly de sessão admin quando existir
     headers: {
-      'Content-Type': 'application/json',
+      // Com FormData o navegador define o Content-Type (com boundary) sozinho;
+      // definir manualmente quebraria o upload do arquivo.
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(options.headers || {}),
     },
   });
@@ -29,6 +32,16 @@ export const api = {
   createOrder: (payload) => request('/api/orders', { method: 'POST', body: JSON.stringify(payload) }),
   getOrder: (token) => request(`/api/orders/${encodeURIComponent(token)}`),
   notifyPayment: (token) => request(`/api/orders/${encodeURIComponent(token)}/notify-payment`, { method: 'POST' }),
+  sendPaymentProofFile: (token, file) => {
+    const formData = new FormData();
+    formData.append('comprovante', file);
+    return request(`/api/orders/${encodeURIComponent(token)}/payment-proof`, { method: 'POST', body: formData });
+  },
+  sendPaymentProofLink: (token, url) =>
+    request(`/api/orders/${encodeURIComponent(token)}/payment-proof`, {
+      method: 'POST',
+      body: JSON.stringify({ proof_url: url }),
+    }),
 
   adminLogin: (username, password) =>
     request('/api/admin/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),

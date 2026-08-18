@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { api, formatCents } from '../../../lib/api';
 import AdminNav from '../../../components/AdminNav';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -78,6 +80,7 @@ export default function OrdersPage() {
               <th>Turma</th>
               <th>Valor</th>
               <th>Pagamento</th>
+              <th>Comprovante</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -89,6 +92,19 @@ export default function OrdersPage() {
                 <td>{o.class_name}</td>
                 <td>{formatCents(o.total_amount_cents)}</td>
                 <td>{o.payment_status || '—'}</td>
+                <td>
+                  {o.proof_type ? (
+                    <a
+                      href={`${API_URL}/api/admin/orders/${o.id}/payment-proof/image`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Ver
+                    </a>
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td>
                   <select
                     className="input"
@@ -107,7 +123,7 @@ export default function OrdersPage() {
             ))}
             {orders.length === 0 && (
               <tr>
-                <td colSpan={6}>Nenhum pedido para esta data.</td>
+                <td colSpan={7}>Nenhum pedido para esta data.</td>
               </tr>
             )}
           </tbody>

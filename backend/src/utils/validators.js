@@ -1,14 +1,17 @@
 // Validação centralizada — listas fechadas, nunca confiar em texto livre do frontend.
 
-const CLASS_REGEX = /^[A-Za-z0-9ºª° \-]{1,20}$/;
 const NAME_REGEX = /^[A-Za-zÀ-ÿ' \-]{2,120}$/;
+
+// Turmas disponíveis — lista fechada (mesma usada no seletor do frontend).
+// Mantenha esta lista sincronizada com CLASS_OPTIONS em frontend/app/page.js.
+const VALID_CLASS_NAMES = new Set(['1 Finanças', '2 Finanças', '1 ADM', '2 ADM', '3 ADM']);
 
 function isValidName(name) {
   return typeof name === 'string' && NAME_REGEX.test(name.trim());
 }
 
 function isValidClassName(className) {
-  return typeof className === 'string' && CLASS_REGEX.test(className.trim());
+  return typeof className === 'string' && VALID_CLASS_NAMES.has(className.trim());
 }
 
 function isValidDateString(dateStr) {
