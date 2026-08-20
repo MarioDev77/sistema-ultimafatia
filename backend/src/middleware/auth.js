@@ -8,10 +8,12 @@ function issueSessionCookie(res, payload) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     secure: env.nodeEnv === 'production',
-    // 'none' é necessário porque o frontend (Vercel) e o backend (Railway)
-    // estão em domínios diferentes. Requer secure:true (HTTPS), o que já
-    // é o caso em produção. Em dev (http://localhost) cai para 'lax'.
-    sameSite: env.nodeEnv === 'production' ? 'none' : 'lax',
+    // O frontend faz proxy same-origin das chamadas de API (ver
+    // next.config.js) — o navegador nunca fala direto com o domínio do
+    // backend. Por isso o cookie pode (e deve) ser 'lax': é mais seguro
+    // que 'none' e evita o bloqueio de cookie "cross-site" que alguns
+    // navegadores mobile aplicam por padrão.
+    sameSite: 'lax',
     maxAge: 8 * 60 * 60 * 1000, // 8h
     path: '/',
   });
@@ -21,7 +23,7 @@ function clearSessionCookie(res) {
   res.clearCookie(COOKIE_NAME, {
     httpOnly: true,
     secure: env.nodeEnv === 'production',
-    sameSite: env.nodeEnv === 'production' ? 'none' : 'lax',
+    sameSite: 'lax',
     path: '/',
   });
 }

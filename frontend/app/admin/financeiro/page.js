@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { api, formatCents } from '../../../lib/api';
 import AdminNav from '../../../components/AdminNav';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 const PAYMENT_STATUS_LABELS = {
   pendente: 'Pendente',
@@ -164,7 +163,7 @@ export default function FinanceiroPage() {
                     <td>
                       {p.proof_type ? (
                         <a
-                          href={`${API_URL}/api/admin/orders/${p.order_id}/payment-proof/image`}
+                          href={'/api/admin/orders/' + p.order_id + '/payment-proof/image'}
                           target="_blank"
                           rel="noopener noreferrer"
                         >

@@ -1,8 +1,11 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
+// As chamadas de API vão para o próprio domínio do frontend (caminho
+// relativo /api/...) — o next.config.js faz o proxy pro backend por
+// trás dos panos. Isso é o que faz o cookie de sessão do admin virar
+// "same-site" de verdade (resolve o login em loop no celular). Nunca
+// chame o domínio do Railway direto no navegador.
 async function request(path, options = {}) {
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(path, {
     ...options,
     credentials: 'include', // envia cookie httpOnly de sessão admin quando existir
     headers: {
@@ -54,7 +57,7 @@ export const api = {
     request(
       `/api/admin/payments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${onlyWithProof ? '&only_with_proof=true' : ''}`
     ),
-  adminPaymentProofImageUrl: (orderId) => `${API_URL}/api/admin/orders/${orderId}/payment-proof/image`,
+  adminPaymentProofImageUrl: (orderId) => `/api/admin/orders/${orderId}/payment-proof/image`,
   adminAnalyzeProof: (orderId) => request(`/api/admin/orders/${orderId}/payment-proof/analyze`, { method: 'POST' }),
   adminCapturePaymentProof: (orderId, file) => {
     const formData = new FormData();
@@ -67,8 +70,8 @@ export const api = {
     ),
 
   adminWeeklyReport: (date) => request(`/api/admin/reports/weekly?${date ? `date=${encodeURIComponent(date)}` : ''}`),
-  adminWeeklyReportExcelUrl: (date) => `${API_URL}/api/admin/reports/weekly/excel${date ? `?date=${encodeURIComponent(date)}` : ''}`,
-  adminWeeklyReportPdfUrl: (date) => `${API_URL}/api/admin/reports/weekly/pdf${date ? `?date=${encodeURIComponent(date)}` : ''}`,
+  adminWeeklyReportExcelUrl: (date) => `/api/admin/reports/weekly/excel${date ? `?date=${encodeURIComponent(date)}` : ''}`,
+  adminWeeklyReportPdfUrl: (date) => `/api/admin/reports/weekly/pdf${date ? `?date=${encodeURIComponent(date)}` : ''}`,
 
   adminAssistantChat: (messages, includeTodayContext) =>
     request('/api/admin/assistant/chat', {

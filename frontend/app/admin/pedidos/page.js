@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { api, formatCents } from '../../../lib/api';
 import AdminNav from '../../../components/AdminNav';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -109,7 +108,7 @@ export default function OrdersPage() {
                   {o.proof_type ? (
                     <>
                       <a
-                        href={`${API_URL}/api/admin/orders/${o.id}/payment-proof/image`}
+                        href={'/api/admin/orders/' + o.id + '/payment-proof/image'}
                         target="_blank"
                         rel="noopener noreferrer"
                       >

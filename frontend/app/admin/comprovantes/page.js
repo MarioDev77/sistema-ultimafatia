@@ -6,7 +6,6 @@ import { api, formatCents } from '../../../lib/api';
 import { compressImageFile } from '../../../lib/imageCompress';
 import AdminNav from '../../../components/AdminNav';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 function daysAgoISO(days) {
   const d = new Date();
@@ -219,7 +218,7 @@ export default function ComprovantesPage() {
           {photos.map((p) => (
             <a
               key={p.order_id}
-              href={`${API_URL}/api/admin/orders/${p.order_id}/payment-proof/image`}
+              href={'/api/admin/orders/' + p.order_id + '/payment-proof/image'}
               target="_blank"
               rel="noopener noreferrer"
               style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}
@@ -227,7 +226,7 @@ export default function ComprovantesPage() {
               <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid #eee', height: 110 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={`${API_URL}/api/admin/orders/${p.order_id}/payment-proof/image`}
+                  src={'/api/admin/orders/' + p.order_id + '/payment-proof/image'}
                   alt={`Comprovante ${p.public_order_number}`}
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
