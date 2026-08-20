@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, formatCents } from '../../../lib/api';
+import { compressImageFile } from '../../../lib/imageCompress';
 import AdminNav from '../../../components/AdminNav';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -24,8 +25,12 @@ export default function ComprovantesPage() {
   const [error, setError] = useState('');
   const [orderNumberInput, setOrderNumberInput] = useState('');
   const [captureOrder, setCaptureOrder] = useState(null); // pedido buscado pra anexar foto
+  const [captureFile, setCaptureFile] = useState(null); // foto tirada (já comprimida), aguardando confirmação
+  const [capturePreviewUrl, setCapturePreviewUrl] = useState(null);
   const [captureError, setCaptureError] = useState('');
+  const [captureSuccess, setCaptureSuccess] = useState('');
   const [capturing, setCapturing] = useState(false);
+  const [compressing, setCompressing] = useState(false);
   const router = useRouter();
 
   function load() {
@@ -43,14 +48,25 @@ export default function ComprovantesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 
+  useEffect(() => {
+    if (!captureFile) {
+      setCapturePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(captureFile);
+    setCapturePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [captureFile]);
+
   async function findOrderByNumber() {
     setCaptureError('');
+    setCaptureSuccess('');
     setCaptureOrder(null);
+    setCaptureFile(null);
     const num = orderNumberInput.trim();
     if (!num) return;
     try {
-      // O painel de pedidos já traz o dia todo; buscamos no dia de hoje e,
-      // se não achar, no período selecionado acima.
+      // O painel de pedidos já traz o dia todo; buscamos no dia de hoje.
       const candidates = await api.adminOrders(todayISO());
       const found = candidates.find((o) => o.public_order_number.toLowerCase() === num.toLowerCase());
       if (!found) {
@@ -63,12 +79,32 @@ export default function ComprovantesPage() {
     }
   }
 
-  async function handleCapture(file) {
-    if (!captureOrder || !file) return;
+  async function handlePhotoSelected(file) {
+    setCaptureSuccess('');
+    setCaptureError('');
+    if (!file) {
+      setCaptureFile(null);
+      return;
+    }
+    setCompressing(true);
+    try {
+      const compressed = await compressImageFile(file);
+      setCaptureFile(compressed);
+    } catch {
+      setCaptureFile(file); // se a compressão falhar por algum motivo, usa a foto original
+    } finally {
+      setCompressing(false);
+    }
+  }
+
+  async function handleSavePhoto() {
+    if (!captureOrder || !captureFile) return;
     setCapturing(true);
     setCaptureError('');
     try {
-      await api.adminCapturePaymentProof(captureOrder.id, file);
+      await api.adminCapturePaymentProof(captureOrder.id, captureFile);
+      setCaptureSuccess(`Comprovante do pedido ${captureOrder.public_order_number} salvo com sucesso!`);
+      setCaptureFile(null);
       setCaptureOrder(null);
       setOrderNumberInput('');
       load();
@@ -88,7 +124,8 @@ export default function ComprovantesPage() {
           Fotografar comprovante do cliente
         </div>
         <div className="subtitle" style={{ marginBottom: 12 }}>
-          Digite o número do pedido (ex: UF-284193) e tire a foto do comprovante mostrado pelo aluno no balcão.
+          Digite o número do pedido (ex: UF-284193), tire a foto do comprovante mostrado pelo aluno no balcão,
+          confira a prévia e clique em Salvar.
         </div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           <input
@@ -97,6 +134,7 @@ export default function ComprovantesPage() {
             placeholder="Número do pedido"
             value={orderNumberInput}
             onChange={(e) => setOrderNumberInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && findOrderByNumber()}
           />
           <button className="btn-secondary" style={{ width: 'auto', padding: '10px 16px' }} onClick={findOrderByNumber}>
             Buscar
@@ -104,6 +142,9 @@ export default function ComprovantesPage() {
         </div>
 
         {captureError && <div className="error-text">{captureError}</div>}
+        {captureSuccess && (
+          <div style={{ color: 'var(--green-ok)', fontWeight: 700, marginBottom: 10 }}>✓ {captureSuccess}</div>
+        )}
 
         {captureOrder && (
           <div style={{ background: 'var(--cream-light)', borderRadius: 12, padding: 10 }}>
@@ -111,17 +152,47 @@ export default function ComprovantesPage() {
             <div className="subtitle" style={{ marginBottom: 10 }}>
               {captureOrder.public_order_number} — {formatCents(captureOrder.total_amount_cents)}
             </div>
-            <label className="btn-primary" style={{ display: 'block', textAlign: 'center', cursor: capturing ? 'wait' : 'pointer' }}>
-              {capturing ? 'Enviando...' : '📷 Tirar foto do comprovante'}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style={{ display: 'none' }}
-                disabled={capturing}
-                onChange={(e) => handleCapture(e.target.files?.[0] || null)}
-              />
-            </label>
+
+            {!captureFile ? (
+              <label className="btn-primary" style={{ display: 'block', textAlign: 'center', cursor: compressing ? 'wait' : 'pointer' }}>
+                {compressing ? 'Processando foto...' : '📷 Abrir câmera e tirar foto'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: 'none' }}
+                  disabled={compressing}
+                  onChange={(e) => handlePhotoSelected(e.target.files?.[0] || null)}
+                />
+              </label>
+            ) : (
+              <div>
+                <div style={{ borderRadius: 10, overflow: 'hidden', marginBottom: 10, maxHeight: 260 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={capturePreviewUrl} alt="Prévia do comprovante" style={{ width: '100%', display: 'block', objectFit: 'contain' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="btn-primary"
+                    style={{ flex: 1 }}
+                    onClick={handleSavePhoto}
+                    disabled={capturing}
+                  >
+                    {capturing ? 'Salvando...' : '💾 Salvar foto do comprovante'}
+                  </button>
+                  <label className="btn-secondary" style={{ width: 'auto', padding: '10px 16px', textAlign: 'center', cursor: 'pointer' }}>
+                    Tirar outra
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      style={{ display: 'none' }}
+                      onChange={(e) => handlePhotoSelected(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

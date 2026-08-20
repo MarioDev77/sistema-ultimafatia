@@ -1,6 +1,6 @@
 const multer = require('multer');
 
-const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB — em base64 fica ~5.4MB, ok pro MySQL padrão
+const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB — o frontend já comprime a foto antes de enviar (normalmente < 1MB); isso aqui é só uma margem de segurança
 
 // Guarda o arquivo em memória (não em disco), já que vamos converter
 // direto para base64 e salvar no banco. Aceita apenas imagens.

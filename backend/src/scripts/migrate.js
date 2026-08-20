@@ -140,13 +140,28 @@ async function step5_removeErvilhaOption() {
   );
 }
 
+// Cada passo roda isolado: se um passo falhar (ex.: permissão de ALTER
+// TABLE negada pelo plano do banco), os outros passos continuam rodando
+// mesmo assim. Antes, um erro no passo 1 travava a migração inteira e os
+// passos seguintes — incluindo a correção do bug de disponibilidade —
+// nunca chegavam a rodar.
+async function runStep(name, fn) {
+  try {
+    await fn();
+  } catch (err) {
+    logger.error(`[migrate] Passo "${name}" falhou — seguindo para o próximo passo mesmo assim`, {
+      error: err.message,
+    });
+  }
+}
+
 async function runMigration() {
-  await step1_fixCharset();
-  await step2_fixMenuText();
-  await step3_fixAvailabilityTable();
-  await step4_addProofReviewStatus();
-  await step5_removeErvilhaOption();
-  logger.info('[migrate] Migração concluída com sucesso.');
+  await runStep('fixCharset', step1_fixCharset);
+  await runStep('fixMenuText', step2_fixMenuText);
+  await runStep('fixAvailabilityTable', step3_fixAvailabilityTable);
+  await runStep('addProofReviewStatus', step4_addProofReviewStatus);
+  await runStep('removeErvilhaOption', step5_removeErvilhaOption);
+  logger.info('[migrate] Migração concluída (ver acima se algum passo falhou).');
 }
 
 // Só executa como processo próprio (`npm run migrate`) — quando importado
