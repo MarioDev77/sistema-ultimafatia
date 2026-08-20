@@ -4,65 +4,87 @@ import { useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import AdminNav from '../../../components/AdminNav';
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+function tomorrowISO() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 export default function AvailabilityPage() {
-  const [date, setDate] = useState(todayISO());
-  const [menu, setMenu] = useState([]);
+  // Mesma data que o cliente vê por padrão na tela de compra (retirada é
+  // sempre pro dia seguinte) — assim o admin edita o mesmo dia que o
+  // aluno está olhando, e não "hoje" enquanto o aluno já está em "amanhã".
+  const [date, setDate] = useState(tomorrowISO());
+  const [allProducts, setAllProducts] = useState([]);
+  const [menu, setMenu] = useState([]); // estado salvo no servidor
   const [ordersOpen, setOrdersOpen] = useState(true);
+  const [pending, setPending] = useState({}); // key -> boolean, ainda não salvo
+  const [pendingOrdersOpen, setPendingOrdersOpen] = useState(null); // null = sem alteração pendente
   const [error, setError] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.adminProducts().then(setAllProducts).catch(() => {});
+  }, []);
 
   function load() {
+    setLoading(true);
     api
       .adminAvailability(date)
       .then((data) => {
         setMenu(data.menu);
         setOrdersOpen(data.ordersOpen);
+        setPending({});
+        setPendingOrdersOpen(null);
+        setSaveMessage('');
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
   }
 
   useEffect(load, [date]);
 
-  async function toggleOrdersOpen() {
-    setSaving(true);
-    try {
-      await api.adminSetCalendar({ date, orders_open: !ordersOpen });
-      setOrdersOpen(!ordersOpen);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
+  function baselineAvailable(productId, optionId) {
+    const product = menu.find((p) => p.id === productId);
+    if (!product) return false;
+    if (optionId === null) return true; // está na lista = produto disponível
+    return product.options.some((o) => o.id === optionId);
   }
 
-  async function toggleProduct(product) {
-    // menu já vem filtrado pelo que está disponível; então se está na
-    // lista, está disponível — clicar desativa (e vice-versa).
-    const currentlyAvailable = menu.some((p) => p.id === product.id);
-    setSaving(true);
-    try {
-      await api.adminSetAvailability({ date, product_id: product.id, option_id: null, available: !currentlyAvailable });
-      load();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
+  function effectiveAvailable(productId, optionId) {
+    const key = `${productId}:${optionId ?? 'null'}`;
+    return key in pending ? pending[key] : baselineAvailable(productId, optionId);
   }
 
-  async function toggleOption(product, option, currentlyAvailable) {
+  function toggle(productId, optionId) {
+    const key = `${productId}:${optionId ?? 'null'}`;
+    const current = effectiveAvailable(productId, optionId);
+    setPending((prev) => ({ ...prev, [key]: !current }));
+    setSaveMessage('');
+  }
+
+  const effectiveOrdersOpen = pendingOrdersOpen === null ? ordersOpen : pendingOrdersOpen;
+  const hasChanges = Object.keys(pending).length > 0 || pendingOrdersOpen !== null;
+
+  async function saveChanges() {
     setSaving(true);
+    setError('');
     try {
-      await api.adminSetAvailability({
-        date,
-        product_id: product.id,
-        option_id: option.id,
-        available: !currentlyAvailable,
-      });
+      if (pendingOrdersOpen !== null) {
+        await api.adminSetCalendar({ date, orders_open: pendingOrdersOpen });
+      }
+      for (const key of Object.keys(pending)) {
+        const [productIdStr, optionIdStr] = key.split(':');
+        await api.adminSetAvailability({
+          date,
+          product_id: Number(productIdStr),
+          option_id: optionIdStr === 'null' ? null : Number(optionIdStr),
+          available: pending[key],
+        });
+      }
+      setSaveMessage('Alterações salvas!');
       load();
     } catch (err) {
       setError(err.message);
@@ -78,8 +100,14 @@ export default function AvailabilityPage() {
       <div className="card">
         <label className="label">Data</label>
         <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ maxWidth: 200 }} />
-        <button className={ordersOpen ? 'btn-secondary' : 'btn-primary'} disabled={saving} onClick={toggleOrdersOpen}>
-          {ordersOpen ? 'Fechar pedidos deste dia' : 'Reabrir pedidos deste dia'}
+        <button
+          className={effectiveOrdersOpen ? 'btn-secondary' : 'btn-primary'}
+          onClick={() => {
+            setPendingOrdersOpen(!effectiveOrdersOpen);
+            setSaveMessage('');
+          }}
+        >
+          {effectiveOrdersOpen ? 'Fechar pedidos deste dia' : 'Reabrir pedidos deste dia'}
         </button>
       </div>
 
@@ -90,76 +118,50 @@ export default function AvailabilityPage() {
           Produtos e sabores disponíveis em {date.split('-').reverse().join('/')}
         </div>
         <div className="subtitle" style={{ marginBottom: 14 }}>
-          Clique para ativar/desativar. Isso não altera o cadastro fixo — vale só para esta data.
+          Toque pra marcar o que muda. Nada é salvo até você tocar em "Salvar alterações" no fim.
         </div>
 
-        {['sanduiche_natural', 'cone_trufado'].map((slug) => {
-          // Busca o produto mesmo que esteja indisponível hoje, olhando a lista completa de opções vinda do backend.
-          const product = menu.find((p) => p.slug === slug);
-          return (
-            <ProductAvailabilityBlock
-              key={slug}
-              slug={slug}
-              product={product}
-              date={date}
-              onToggleProduct={toggleProduct}
-              onToggleOption={toggleOption}
-              saving={saving}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+        {loading && <div className="subtitle">Carregando...</div>}
 
-// Como o endpoint de disponibilidade retorna só o que ESTÁ disponível,
-// buscamos a lista completa de produtos/opções em paralelo para saber
-// o que existe no cadastro e poder reativar o que foi desativado.
-function ProductAvailabilityBlock({ slug, product, date, onToggleProduct, onToggleOption, saving }) {
-  const [allProducts, setAllProducts] = useState([]);
-
-  useEffect(() => {
-    api.adminProducts().then(setAllProducts).catch(() => {});
-  }, [date]);
-
-  const full = allProducts.find((p) => p.slug === slug);
-  if (!full) return null;
-
-  const productAvailable = !!product;
-
-  return (
-    <div style={{ marginBottom: 18, paddingBottom: 14, borderBottom: '1px solid #eee' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div className="product-title">{full.name}</div>
-        <div
-          className={`option-pill ${productAvailable ? 'selected' : ''}`}
-          style={{ cursor: saving ? 'wait' : 'pointer' }}
-          onClick={() => !saving && onToggleProduct(full)}
-        >
-          {productAvailable ? 'Disponível hoje' : 'Indisponível hoje'}
-        </div>
-      </div>
-
-      {full.requires_option && (
-        <div className="option-group" style={{ marginTop: 10 }}>
-          {full.options
-            .filter((o) => o.active)
-            .map((opt) => {
-              const optionAvailable = product ? product.options.some((o) => o.id === opt.id) : false;
-              return (
+        {!loading &&
+          allProducts.map((full) => (
+            <div key={full.id} style={{ marginBottom: 18, paddingBottom: 14, borderBottom: '1px solid #eee' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="product-title">{full.name}</div>
                 <div
-                  key={opt.id}
-                  className={`option-pill ${optionAvailable ? 'selected' : ''}`}
-                  style={{ cursor: saving ? 'wait' : 'pointer' }}
-                  onClick={() => !saving && onToggleOption(full, opt, optionAvailable)}
+                  className={`option-pill ${effectiveAvailable(full.id, null) ? 'selected' : ''}`}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => toggle(full.id, null)}
                 >
-                  {opt.label}
+                  {effectiveAvailable(full.id, null) ? 'Disponível' : 'Indisponível'}
                 </div>
-              );
-            })}
-        </div>
-      )}
+              </div>
+
+              {full.requires_option && (
+                <div className="option-group" style={{ marginTop: 10 }}>
+                  {full.options
+                    .filter((o) => o.active)
+                    .map((opt) => (
+                      <div
+                        key={opt.id}
+                        className={`option-pill ${effectiveAvailable(full.id, opt.id) ? 'selected' : ''}`}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => toggle(full.id, opt.id)}
+                      >
+                        {opt.label}
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          ))}
+
+        {saveMessage && <div style={{ color: 'var(--green-ok)', fontWeight: 700, marginBottom: 10 }}>✓ {saveMessage}</div>}
+
+        <button className="btn-primary" disabled={!hasChanges || saving} onClick={saveChanges}>
+          {saving ? 'Salvando...' : hasChanges ? 'Salvar alterações' : 'Nenhuma alteração pendente'}
+        </button>
+      </div>
     </div>
   );
 }

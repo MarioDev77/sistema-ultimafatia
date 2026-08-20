@@ -56,30 +56,35 @@ export default function Home() {
       .finally(() => setLoadingMenu(false));
   }, [pickupDate]);
 
-  function updateCartQty(product, option, delta) {
-    const key = `${product.id}:${option ? option.id : 'null'}`;
+  // Sanduíche não tem sabor pra escolher — um único botão "Comprar" que
+  // liga/desliga 1 unidade no carrinho (toque de novo pra remover).
+  function toggleSimpleProduct(product) {
+    const key = `${product.id}:null`;
     setCart((prev) => {
-      const current = prev[key]?.qty || 0;
-      const nextQty = Math.max(0, current + delta);
       const next = { ...prev };
-      if (nextQty === 0) {
+      if (next[key]) {
         delete next[key];
       } else {
-        next[key] = { product, option, qty: nextQty };
+        next[key] = { product, option: null, qty: 1 };
       }
       return next;
     });
   }
 
   function selectOption(product, option) {
-    // Ao trocar de sabor/opção, some com a quantidade da opção anterior daquele produto
-    // e começa a nova opção com 1 unidade (comportamento simples e previsível no celular).
+    // Tocar num sabor seleciona ele (e troca qualquer sabor já escolhido
+    // desse produto); tocar de novo no mesmo sabor já selecionado remove
+    // do carrinho — um único toque faz a "compra", sem contador.
     setCart((prev) => {
+      const key = `${product.id}:${option.id}`;
+      const alreadySelected = !!prev[key];
       const next = { ...prev };
-      Object.keys(next).forEach((key) => {
-        if (key.startsWith(`${product.id}:`)) delete next[key];
+      Object.keys(next).forEach((k) => {
+        if (k.startsWith(`${product.id}:`)) delete next[k];
       });
-      next[`${product.id}:${option.id}`] = { product, option, qty: 1 };
+      if (!alreadySelected) {
+        next[key] = { product, option, qty: 1 };
+      }
       return next;
     });
   }
@@ -201,6 +206,7 @@ export default function Home() {
                           className={`option-pill ${selected ? 'selected' : ''}`}
                           onClick={() => selectOption(product, opt)}
                         >
+                          {selected ? '✓ ' : ''}
                           {opt.label}
                         </div>
                       );
@@ -208,33 +214,14 @@ export default function Home() {
                   </div>
                 )}
 
-                {Object.entries(cart)
-                  .filter(([key]) => key.startsWith(`${product.id}:`))
-                  .map(([key, item]) => (
-                    <div className="qty-row" key={key}>
-                      <button className="qty-btn" onClick={() => updateCartQty(item.product, item.option, -1)}>
-                        −
-                      </button>
-                      <span className="qty-value">{item.qty}</span>
-                      <button className="qty-btn" onClick={() => updateCartQty(item.product, item.option, 1)}>
-                        +
-                      </button>
-                      <span className="subtitle">
-                        {item.option ? item.option.label : 'unidade(s)'}
-                      </span>
-                    </div>
-                  ))}
-
                 {!product.requires_option && (
-                  <div className="qty-row">
-                    <button className="qty-btn" onClick={() => updateCartQty(product, null, -1)}>
-                      −
-                    </button>
-                    <span className="qty-value">{cart[`${product.id}:null`]?.qty || 0}</span>
-                    <button className="qty-btn" onClick={() => updateCartQty(product, null, 1)}>
-                      +
-                    </button>
-                  </div>
+                  <button
+                    className={cart[`${product.id}:null`] ? 'btn-secondary' : 'btn-primary'}
+                    style={{ marginTop: 12 }}
+                    onClick={() => toggleSimpleProduct(product)}
+                  >
+                    {cart[`${product.id}:null`] ? '✓ Adicionado — toque para remover' : 'Comprar'}
+                  </button>
                 )}
               </div>
             ))}
