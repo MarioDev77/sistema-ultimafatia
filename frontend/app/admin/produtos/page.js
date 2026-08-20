@@ -61,10 +61,10 @@ export default function ProductsPage() {
           <div className="qty-row" style={{ marginTop: 10 }}>
             <span className="subtitle">Preço atual: {formatCents(p.base_price_cents)}</span>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <input
               className="input"
-              style={{ marginBottom: 0, flex: '1 1 160px' }}
+              style={{ marginBottom: 0 }}
               placeholder="Novo preço (ex: 7,50)"
               value={editingPrice[p.id] ?? ''}
               onChange={(e) => setEditingPrice((prev) => ({ ...prev, [p.id]: e.target.value }))}

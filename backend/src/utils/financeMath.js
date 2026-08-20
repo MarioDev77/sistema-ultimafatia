@@ -41,14 +41,6 @@ function breakEvenUnits(fixedCostCents, contributionMarginCents) {
   return fixedCostCents / contributionMarginCents;
 }
 
-// Projeção simples por média móvel: faturamento médio diário (com base
-// num período histórico já ocorrido) x número de dias a projetar.
-// Não é IA nem regressão — é média simples, deixado claro na resposta
-// do assistente para não passar falsa precisão.
-function projectRevenue(avgDailyCents, horizonDays) {
-  return Math.round(avgDailyCents * horizonDays);
-}
-
 module.exports = {
   formatBRL,
   formatPct,
@@ -57,5 +49,4 @@ module.exports = {
   markupOnCost,
   priceFromMarkup,
   breakEvenUnits,
-  projectRevenue,
 };

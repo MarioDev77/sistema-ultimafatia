@@ -73,8 +73,8 @@ export default function FinanceiroPage() {
           Relatório semanal (balancete)
         </div>
         <div className="subtitle" style={{ marginBottom: 12 }}>
-          Gera o balancete dos últimos 7 dias até a data "Até" selecionada abaixo, com resumo escrito por IA
-          a partir dos números reais da loja.
+          Gera o balancete dos últimos 7 dias até a data "Até" selecionada abaixo, com resumo automático em texto
+          calculado direto em cima dos números reais da loja (sem chamada a nenhuma API externa).
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn-primary" style={{ width: 'auto', padding: '10px 16px' }} onClick={loadWeeklyReport} disabled={reportLoading}>
@@ -107,13 +107,8 @@ export default function FinanceiroPage() {
               <span>Cancelados</span>
               <span>{report.cancelledCount}</span>
             </div>
-            {report.narrative ? (
+            {report.narrative && (
               <div style={{ marginTop: 10, whiteSpace: 'pre-wrap', fontSize: 13.5, lineHeight: 1.5 }}>{report.narrative}</div>
-            ) : (
-              <div className="subtitle" style={{ marginTop: 10 }}>
-                Resumo em texto indisponível (assistente de IA não configurado no servidor). Os números acima e nos
-                downloads continuam completos.
-              </div>
             )}
           </div>
         )}
@@ -147,7 +142,6 @@ export default function FinanceiroPage() {
           </div>
 
           <div className="card">
-            <div className="table-scroll">
             <table>
               <thead>
                 <tr>
@@ -189,7 +183,6 @@ export default function FinanceiroPage() {
                 )}
               </tbody>
             </table>
-            </div>
           </div>
         </>
       )}

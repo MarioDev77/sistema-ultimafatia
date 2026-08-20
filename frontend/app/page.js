@@ -71,21 +71,6 @@ export default function Home() {
     });
   }
 
-  // Produtos sem sabor (ex.: Sanduíche Natural) não usam contador — é um
-  // botão único que adiciona 1 unidade ao pedido, e clicar de novo remove.
-  function toggleSimpleProduct(product) {
-    const key = `${product.id}:null`;
-    setCart((prev) => {
-      const next = { ...prev };
-      if (next[key]) {
-        delete next[key];
-      } else {
-        next[key] = { product, option: null, qty: 1 };
-      }
-      return next;
-    });
-  }
-
   function selectOption(product, option) {
     // Ao trocar de sabor/opção, some com a quantidade da opção anterior daquele produto
     // e começa a nova opção com 1 unidade (comportamento simples e previsível no celular).
@@ -223,40 +208,34 @@ export default function Home() {
                   </div>
                 )}
 
-                {product.requires_option &&
-                  Object.entries(cart)
-                    .filter(([key, item]) => key.startsWith(`${product.id}:`) && item.option)
-                    .map(([key, item]) => (
-                      <div className="qty-row" key={key}>
-                        <button className="qty-btn" onClick={() => updateCartQty(item.product, item.option, -1)}>
-                          −
-                        </button>
-                        <span className="qty-value">{item.qty}</span>
-                        <button className="qty-btn" onClick={() => updateCartQty(item.product, item.option, 1)}>
-                          +
-                        </button>
-                        <span className="subtitle">{item.option.label}</span>
-                      </div>
-                    ))}
-
-                {!product.requires_option &&
-                  (() => {
-                    const inCart = !!cart[`${product.id}:null`];
-                    return (
-                      <button
-                        className="btn-primary"
-                        style={{
-                          marginTop: 10,
-                          ...(inCart
-                            ? { background: 'var(--green-ok)', boxShadow: 'none' }
-                            : {}),
-                        }}
-                        onClick={() => toggleSimpleProduct(product)}
-                      >
-                        {inCart ? `✓ ${product.name} adicionado — toque para remover` : `Comprar ${product.name}`}
+                {Object.entries(cart)
+                  .filter(([key]) => key.startsWith(`${product.id}:`))
+                  .map(([key, item]) => (
+                    <div className="qty-row" key={key}>
+                      <button className="qty-btn" onClick={() => updateCartQty(item.product, item.option, -1)}>
+                        −
                       </button>
-                    );
-                  })()}
+                      <span className="qty-value">{item.qty}</span>
+                      <button className="qty-btn" onClick={() => updateCartQty(item.product, item.option, 1)}>
+                        +
+                      </button>
+                      <span className="subtitle">
+                        {item.option ? item.option.label : 'unidade(s)'}
+                      </span>
+                    </div>
+                  ))}
+
+                {!product.requires_option && (
+                  <div className="qty-row">
+                    <button className="qty-btn" onClick={() => updateCartQty(product, null, -1)}>
+                      −
+                    </button>
+                    <span className="qty-value">{cart[`${product.id}:null`]?.qty || 0}</span>
+                    <button className="qty-btn" onClick={() => updateCartQty(product, null, 1)}>
+                      +
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
 

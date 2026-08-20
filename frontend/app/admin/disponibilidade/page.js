@@ -90,9 +90,7 @@ export default function AvailabilityPage() {
           Produtos e sabores disponíveis em {date.split('-').reverse().join('/')}
         </div>
         <div className="subtitle" style={{ marginBottom: 14 }}>
-          Clique para ativar/desativar. Isso não altera o cadastro fixo — vale só para esta data. Por padrão
-          tudo começa <strong>disponível</strong>; clique num sabor para escondê-lo do cliente hoje (fica
-          riscado e tracejado em vermelho) — clique de novo para trazê-lo de volta.
+          Clique para ativar/desativar. Isso não altera o cadastro fixo — vale só para esta data.
         </div>
 
         {['sanduiche_natural', 'cone_trufado'].map((slug) => {
@@ -153,19 +151,10 @@ function ProductAvailabilityBlock({ slug, product, date, onToggleProduct, onTogg
                 <div
                   key={opt.id}
                   className={`option-pill ${optionAvailable ? 'selected' : ''}`}
-                  style={{
-                    cursor: saving ? 'wait' : 'pointer',
-                    ...(optionAvailable
-                      ? {}
-                      : { opacity: 0.55, border: '2px dashed var(--red-danger)', textDecoration: 'line-through' }),
-                  }}
+                  style={{ cursor: saving ? 'wait' : 'pointer' }}
                   onClick={() => !saving && onToggleOption(full, opt, optionAvailable)}
                 >
                   {opt.label}
-                  <span style={{ fontWeight: 400, opacity: 0.85 }}>
-                    {' '}
-                    {optionAvailable ? '· disponível' : '· indisponível'}
-                  </span>
                 </div>
               );
             })}

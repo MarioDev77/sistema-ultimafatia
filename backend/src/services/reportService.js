@@ -1,20 +1,20 @@
 // Relatório financeiro semanal (balancete) do painel admin.
 //
 // Junta os números reais do banco (faturamento, pedidos por status,
-// produção por produto/sabor, comprovantes) dos últimos 7 dias e usa a
-// API da Anthropic só para ESCREVER o texto do relatório em português —
-// os números em si são sempre calculados aqui, nunca "inventados" pela
-// IA. Se a IA não estiver configurada (sem ANTHROPIC_API_KEY), o
-// relatório sai normalmente, só sem o resumo em texto.
+// produção por produto/sabor, comprovantes) dos últimos 7 dias e monta
+// o texto do relatório 100% localmente, com código — sem chamar nenhuma
+// API externa. O texto é gerado a partir de regras (maior vendido, dia
+// mais forte, taxa de cancelamento, pendências, comprovantes faltando),
+// sempre calculado em cima dos números reais do sistema.
 const db = require('../config/db');
-const env = require('../config/env');
-const logger = require('../utils/logger');
-const { formatBRL } = require('../utils/financeMath');
-
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const { formatBRL, formatPct } = require('../utils/financeMath');
 
 function isoDate(d) {
   return d.toISOString().slice(0, 10);
+}
+
+function formatDateBR(dateStr) {
+  return String(dateStr).slice(0, 10).split('-').reverse().join('/');
 }
 
 // Semana de 7 dias terminando em `endDateStr` (inclusive). Sem
@@ -97,71 +97,80 @@ async function collectWeeklyData(from, to) {
   };
 }
 
-function buildNarrativePrompt(from, to, data) {
-  const statusLines = data.statusCounts.map((s) => `- ${s.status}: ${s.total}`).join('\n');
-  const productionLines = data.production
-    .map((p) => `- ${p.product_name}${p.option_label ? ` (${p.option_label})` : ''}: ${p.total_qty} un — ${formatBRL(p.total_cents)}`)
-    .join('\n');
-  const dayLines = data.byDay.map((d) => `- ${d.pickup_date}: ${d.orders_count} pedido(s), ${formatBRL(d.revenue_cents)}`).join('\n');
+// Monta o texto do balancete só com base nos números já calculados acima
+// — nenhuma chamada externa, tudo é lógica local em cima dos dados reais
+// do banco.
+function buildLocalNarrative(from, to, data) {
+  const totalOrders = data.statusCounts.reduce((sum, s) => sum + s.total, 0);
 
-  return `Dados reais da loja escolar "Última Fatia" entre ${from} e ${to}:
-
-Faturamento confirmado: ${formatBRL(data.revenueCents)} (${data.confirmedCount} pedidos)
-Valor ainda pendente de pagamento: ${formatBRL(data.pendingCents)} (${data.pendingCount} pedidos)
-Pedidos cancelados: ${data.cancelledCount}
-Comprovantes recebidos no período: ${data.withProofCount}
-
-Pedidos por status:
-${statusLines || '- nenhum'}
-
-Produção por item:
-${productionLines || '- nenhuma venda no período'}
-
-Faturamento por dia:
-${dayLines || '- sem dados'}
-
-Escreva um relatório semanal curto e direto em português, para o responsável da loja
-(um aluno/professor gestor, sem formação em contabilidade). Use só os números acima,
-não invente nada. Estrutura: 1) resumo de 2-3 frases, 2) destaques (o que vendeu mais,
-dia mais forte), 3) pontos de atenção (pendências, cancelamentos, comprovantes faltando),
-4) uma sugestão prática para a próxima semana. Nada de tabelas — texto corrido, direto.`;
-}
-
-async function generateNarrative(from, to, data) {
-  if (!env.assistant.apiKey) return null;
-
-  try {
-    const response = await fetch(ANTHROPIC_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': env.assistant.apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: env.assistant.model,
-        max_tokens: 700,
-        messages: [{ role: 'user', content: buildNarrativePrompt(from, to, data) }],
-      }),
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      logger.error('[weeklyReport] Falha ao gerar narrativa com IA', { status: response.status, body: body.slice(0, 300) });
-      return null;
-    }
-    const json = await response.json();
-    const textBlock = (json.content || []).find((b) => b.type === 'text');
-    return textBlock ? textBlock.text.trim() : null;
-  } catch (err) {
-    logger.error('[weeklyReport] Erro de rede ao gerar narrativa com IA', { error: err.message });
-    return null;
+  if (totalOrders === 0) {
+    return `Nenhum pedido registrado entre ${formatDateBR(from)} e ${formatDateBR(to)}. Sem movimento para analisar nesta semana.`;
   }
+
+  // ---- Resumo ----
+  const paragraphs = [];
+  paragraphs.push(
+    `Entre ${formatDateBR(from)} e ${formatDateBR(to)} a loja teve ${totalOrders} pedido(s), com faturamento confirmado de ` +
+      `${formatBRL(data.revenueCents)} (${data.confirmedCount} pedido(s) pagos). Ainda há ${formatBRL(data.pendingCents)} ` +
+      `em ${data.pendingCount} pedido(s) aguardando confirmação de pagamento.`
+  );
+
+  // ---- Destaques ----
+  const highlights = [];
+  if (data.production.length > 0) {
+    const topItem = data.production[0];
+    const itemLabel = topItem.option_label ? `${topItem.product_name} (${topItem.option_label})` : topItem.product_name;
+    highlights.push(`o item mais vendido foi ${itemLabel}, com ${topItem.total_qty} unidade(s) (${formatBRL(topItem.total_cents)})`);
+  }
+  const daysWithRevenue = data.byDay.filter((d) => d.revenue_cents > 0);
+  if (daysWithRevenue.length > 0) {
+    const bestDay = daysWithRevenue.reduce((max, d) => (d.revenue_cents > max.revenue_cents ? d : max), daysWithRevenue[0]);
+    highlights.push(`o dia de maior faturamento foi ${formatDateBR(bestDay.pickup_date)}, com ${formatBRL(bestDay.revenue_cents)}`);
+  }
+  if (highlights.length > 0) {
+    paragraphs.push(`Destaques da semana: ${highlights.join('; ')}.`);
+  }
+
+  // ---- Pontos de atenção ----
+  const attention = [];
+  if (data.cancelledCount > 0) {
+    const cancelRate = data.cancelledCount / totalOrders;
+    attention.push(`${data.cancelledCount} pedido(s) cancelado(s) (${formatPct(cancelRate)} do total)`);
+  }
+  if (data.pendingCount > 0) {
+    attention.push(`${data.pendingCount} pedido(s) ainda aguardando confirmação de pagamento (${formatBRL(data.pendingCents)})`);
+  }
+  const ordersWithProofGap = data.confirmedCount + data.pendingCount - data.withProofCount;
+  if (ordersWithProofGap > 0) {
+    attention.push(`${ordersWithProofGap} pedido(s) pago(s)/pendente(s) ainda sem comprovante anexado no painel`);
+  }
+  if (attention.length > 0) {
+    paragraphs.push(`Pontos de atenção: ${attention.join('; ')}.`);
+  } else {
+    paragraphs.push('Nenhum ponto de atenção relevante: sem cancelamentos e sem pendências acumuladas.');
+  }
+
+  // ---- Sugestão prática ----
+  let suggestion;
+  if (data.pendingCount > 0) {
+    suggestion = 'Priorize conferir os comprovantes dos pedidos pendentes antes do próximo dia de retirada, para não acumular.';
+  } else if (data.cancelledCount / totalOrders > 0.15) {
+    suggestion = 'A taxa de cancelamento está alta — vale entender o motivo (ex: prazo curto de pagamento) antes da próxima semana.';
+  } else if (data.production.length > 0) {
+    const topItem = data.production[0];
+    suggestion = `${topItem.product_name} segue como o mais forte — garanta insumo suficiente pra ele na próxima semana.`;
+  } else {
+    suggestion = 'Semana estável — manter o ritmo atual de produção e divulgação.';
+  }
+  paragraphs.push(`Sugestão para a próxima semana: ${suggestion}`);
+
+  return paragraphs.join('\n\n');
 }
 
 async function buildWeeklyReport(endDateStr) {
   const { from, to } = resolveWeekRange(endDateStr);
   const data = await collectWeeklyData(from, to);
-  const narrative = await generateNarrative(from, to, data);
+  const narrative = buildLocalNarrative(from, to, data);
   return { from, to, ...data, narrative };
 }
 
