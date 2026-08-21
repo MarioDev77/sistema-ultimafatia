@@ -164,6 +164,23 @@ body {
   box-shadow: none;
 }
 
+.btn-whatsapp {
+  background: #25D366;
+  color: white;
+  border: none;
+  border-radius: 14px;
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  width: 100%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(37,211,102,0.35);
+}
+
 .btn-secondary {
   background: white;
   color: var(--brown-dark);
