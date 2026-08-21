@@ -176,7 +176,8 @@ CREATE TABLE security_logs (
   details VARCHAR(500) NULL,                -- NUNCA senha, chave Pix ou token
   ip_address VARCHAR(45) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_log_admin FOREIGN KEY (admin_id) REFERENCES admin_users(id)
+  CONSTRAINT fk_log_admin FOREIGN KEY (admin_id) REFERENCES admin_users(id),
+  INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================

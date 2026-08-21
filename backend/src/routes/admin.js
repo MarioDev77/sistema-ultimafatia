@@ -3,12 +3,13 @@ const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const { requireAdmin } = require('../middleware/auth');
 const { adminApiLimiter } = require('../middleware/rateLimit');
-const { isValidDateString, isPositiveInt } = require('../utils/validators');
+const { isValidDateString, isPositiveInt, isValidOrderNumber } = require('../utils/validators');
 const { setAvailability, setOrdersOpen, getMenuForDate } = require('../services/availabilityService');
 const { askAssistant, AssistantError } = require('../services/assistantService');
 const { analyzeProofImage, ProofAnalysisError } = require('../services/proofAnalysisService');
 const { assistantLimiter } = require('../middleware/rateLimit');
 const { uploadProofSingle } = require('../middleware/upload');
+const { detectRealImageMime } = require('../utils/imageSniff');
 const { savePaymentProof } = require('../services/orderService');
 const { buildWeeklyReport } = require('../services/reportService');
 const { buildWeeklyExcel } = require('../services/excelReportService');
@@ -85,6 +86,39 @@ router.get(
   })
 );
 
+// Busca um pedido pelo número público (ex.: "UF-284193"), usado na tela
+// "Fotografar comprovante" (aba Comprovantes) para localizar o pedido antes
+// de anexar a foto. Correção do bug: antes a busca dependia de o pedido ter
+// pickup_date = hoje (buscava em api.adminOrders(hoje) e filtrava no
+// front), mas o padrão do pedido é retirada NO DIA SEGUINTE — então quase
+// nenhum pedido feito "hoje" tinha pickup_date = hoje, e a busca sempre
+// dava "não encontrado" mesmo pedido existindo. Como public_order_number é
+// UNIQUE no banco (ver schema.sql), a busca é direta, indexada e não
+// depende de data nenhuma.
+router.get(
+  '/orders/by-number/:number',
+  asyncHandler(async (req, res) => {
+    const raw = req.params.number;
+    if (!isValidOrderNumber(raw)) {
+      return res.status(400).json({ error: 'Número de pedido inválido (ex: UF-284193).' });
+    }
+    const orderNumber = raw.trim().toUpperCase();
+
+    const [rows] = await db.query(
+      `SELECT o.id, o.public_order_number, o.student_name, o.class_name, o.pickup_date,
+              o.status, o.total_amount_cents, p.status AS payment_status, p.proof_type
+       FROM orders o
+       LEFT JOIN payments p ON p.order_id = o.id
+       WHERE o.public_order_number = ?`,
+      [orderNumber]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Pedido não encontrado. Confira o número (ex: UF-284193).' });
+    }
+    res.json(rows[0]);
+  })
+);
+
 // Exibe o comprovante enviado pelo cliente: imagem (upload) ou redireciona
 // para o link (quando o cliente colou uma URL em vez de enviar arquivo).
 router.get(
@@ -110,9 +144,20 @@ router.get(
     if (!match) {
       return res.status(500).json({ error: 'Comprovante corrompido.' });
     }
-    const [, mimeType, base64Data] = match;
-    res.set('Content-Type', mimeType);
-    res.send(Buffer.from(base64Data, 'base64'));
+    const [, , base64Data] = match;
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // Defesa em profundidade: nunca confia no mimetype guardado no banco
+    // para decidir o Content-Type da resposta — recalcula a partir dos
+    // bytes reais. Isso impede que um registro antigo/corrompido seja
+    // servido como "image/svg+xml" (execução de script no navegador).
+    const realMime = detectRealImageMime(buffer);
+    if (!realMime) {
+      return res.status(500).json({ error: 'Comprovante corrompido.' });
+    }
+    res.set('Content-Type', realMime);
+    res.set('Content-Disposition', 'inline');
+    res.send(buffer);
   })
 );
 
@@ -173,10 +218,18 @@ router.post(
       return res.status(400).json({ error: 'Envie a foto do comprovante.' });
     }
 
+    // Nunca confia no header `mimetype` (é escolhido pelo cliente e pode ser
+    // forjado). Confere a assinatura binária real do arquivo — isso é o que
+    // de fato impede o upload de um SVG/HTML disfarçado de imagem.
+    const realMime = detectRealImageMime(req.file.buffer);
+    if (!realMime) {
+      return res.status(400).json({ error: 'Arquivo não é uma imagem válida (JPG, PNG, WEBP ou GIF).' });
+    }
+
     const [orderRows] = await db.query('SELECT id FROM orders WHERE id = ?', [orderId]);
     if (orderRows.length === 0) return res.status(404).json({ error: 'Pedido não encontrado.' });
 
-    const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    const dataUrl = `data:${realMime};base64,${req.file.buffer.toString('base64')}`;
     await savePaymentProof(orderId, { type: 'upload', image: dataUrl });
 
     await db.query('INSERT INTO security_logs (admin_id, action, details, ip_address) VALUES (?, ?, ?, ?)', [
@@ -473,6 +526,14 @@ router.patch(
       return res.status(400).json({ error: 'Dados inválidos.' });
     }
     await db.query('UPDATE product_options SET active = ? WHERE id = ?', [active ? 1 : 0, optionId]);
+
+    await db.query('INSERT INTO security_logs (admin_id, action, details, ip_address) VALUES (?, ?, ?, ?)', [
+      req.admin.id,
+      'product_option_change',
+      `Opção ${optionId} atualizada: active=${active}`,
+      req.ip,
+    ]);
+
     res.json({ message: 'Opção atualizada.' });
   })
 );

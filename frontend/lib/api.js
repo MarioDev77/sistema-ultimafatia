@@ -43,6 +43,7 @@ export const api = {
   adminDashboard: (date) => request(`/api/admin/dashboard?date=${encodeURIComponent(date)}`),
   adminOrders: (date) => request(`/api/admin/orders?date=${encodeURIComponent(date)}`),
   adminOrderDetail: (id) => request(`/api/admin/orders/${id}`),
+  adminOrderByNumber: (number) => request(`/api/admin/orders/by-number/${encodeURIComponent(number.trim())}`),
   adminUpdateOrderStatus: (id, status) =>
     request(`/api/admin/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   adminAvailability: (date) => request(`/api/admin/availability?date=${encodeURIComponent(date)}`),

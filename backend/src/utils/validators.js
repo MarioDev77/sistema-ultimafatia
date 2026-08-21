@@ -35,6 +35,13 @@ function isPositiveInt(n, max = 1000) {
   return Number.isInteger(n) && n > 0 && n <= max;
 }
 
+// Formato do número público do pedido gerado em orderService.js: "UF-" + 6 dígitos.
+const ORDER_NUMBER_REGEX = /^UF-\d{6}$/;
+
+function isValidOrderNumber(orderNumber) {
+  return typeof orderNumber === 'string' && ORDER_NUMBER_REGEX.test(orderNumber.trim().toUpperCase());
+}
+
 // Valida a lista de itens do pedido antes de qualquer cálculo de preço.
 // items: [{ product_id, option_id, quantity }]
 function isValidItemsArray(items) {
@@ -54,4 +61,5 @@ module.exports = {
   isValidDateString,
   isPositiveInt,
   isValidItemsArray,
+  isValidOrderNumber,
 };

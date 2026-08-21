@@ -65,13 +65,11 @@ export default function ComprovantesPage() {
     const num = orderNumberInput.trim();
     if (!num) return;
     try {
-      // O painel de pedidos já traz o dia todo; buscamos no dia de hoje.
-      const candidates = await api.adminOrders(todayISO());
-      const found = candidates.find((o) => o.public_order_number.toLowerCase() === num.toLowerCase());
-      if (!found) {
-        setCaptureError('Pedido não encontrado em hoje. Confira o número (ex: UF-284193).');
-        return;
-      }
+      // Busca direta pelo número (não depende da data de retirada do
+      // pedido — antes buscava só nos pedidos com retirada hoje, e como o
+      // padrão é retirada no dia seguinte, quase sempre dava "não
+      // encontrado" mesmo com o pedido existindo).
+      const found = await api.adminOrderByNumber(num);
       setCaptureOrder(found);
     } catch (err) {
       setCaptureError(err.message);

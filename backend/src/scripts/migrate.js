@@ -140,6 +140,21 @@ async function step5_removeErvilhaOption() {
   );
 }
 
+async function step6_addSecurityLogsCreatedAtIndex() {
+  // GET /api/admin/logs faz ORDER BY sl.created_at DESC LIMIT 200 sem
+  // índice em created_at — full scan + filesort à medida que a tabela
+  // cresce. Idempotente: só cria o índice se ele ainda não existir.
+  const [idx] = await db.query(
+    `SELECT COUNT(*) AS n FROM information_schema.statistics
+     WHERE table_schema = DATABASE() AND table_name = 'security_logs'
+       AND index_name = 'idx_created_at'`
+  );
+  if (idx[0].n === 0) {
+    await db.query('ALTER TABLE security_logs ADD INDEX idx_created_at (created_at)');
+    logger.info('[migrate] Índice idx_created_at adicionado em security_logs');
+  }
+}
+
 // Cada passo roda isolado: se um passo falhar (ex.: permissão de ALTER
 // TABLE negada pelo plano do banco), os outros passos continuam rodando
 // mesmo assim. Antes, um erro no passo 1 travava a migração inteira e os
@@ -161,6 +176,7 @@ async function runMigration() {
   await runStep('fixAvailabilityTable', step3_fixAvailabilityTable);
   await runStep('addProofReviewStatus', step4_addProofReviewStatus);
   await runStep('removeErvilhaOption', step5_removeErvilhaOption);
+  await runStep('addSecurityLogsCreatedAtIndex', step6_addSecurityLogsCreatedAtIndex);
   logger.info('[migrate] Migração concluída (ver acima se algum passo falhou).');
 }
 

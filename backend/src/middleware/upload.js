@@ -6,9 +6,16 @@ const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB — o frontend já comprime a foto
 // direto para base64 e salvar no banco. Aceita apenas imagens.
 const storage = multer.memoryStorage();
 
+// Allowlist explícita (nunca "startsWith('image/')"): isso incluiria
+// "image/svg+xml", que pode conter <script> e é executado pelo navegador
+// se a imagem for aberta direto (ex.: link em nova aba). Este header
+// também é só uma pré-filtragem — o conteúdo real do arquivo é
+// conferido de novo depois do upload em utils/imageSniff.js.
+const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
 function fileFilter(req, file, cb) {
-  if (!file.mimetype || !file.mimetype.startsWith('image/')) {
-    return cb(new Error('Envie apenas arquivos de imagem (JPG, PNG, WEBP, etc).'));
+  if (!file.mimetype || !ALLOWED_MIME_TYPES.has(file.mimetype)) {
+    return cb(new Error('Envie apenas arquivos de imagem (JPG, PNG, WEBP ou GIF).'));
   }
   cb(null, true);
 }
@@ -25,7 +32,7 @@ function uploadProofSingle(req, res, next) {
   multerInstance.single('comprovante')(req, res, (err) => {
     if (!err) return next();
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'Imagem muito grande. Envie um arquivo de até 4MB.' });
+      return res.status(400).json({ error: 'Imagem muito grande. Envie um arquivo de até 6MB.' });
     }
     return res.status(400).json({ error: err.message || 'Não foi possível processar a imagem enviada.' });
   });
